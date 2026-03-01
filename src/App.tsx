@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Layout from "./components/Layout";
 import LibraryPage from "./pages/LibraryPage";
+import SeriesDetailPage from "./pages/SeriesDetailPage";
+import { AnimeCardData } from "./components/AnimeCard";
 
 type StatusFilter =
   | "all"
@@ -20,6 +22,9 @@ export default function App() {
   const [activePage, setActivePage] = useState("library");
   const [searchQuery, setSearchQuery] = useState("");
   const [seriesCount, setSeriesCount] = useState(0);
+  const [selectedAnime, setSelectedAnime] = useState<AnimeCardData | null>(
+    null,
+  );
 
   const pageTitles: Record<string, string> = {
     library: "Library",
@@ -32,7 +37,6 @@ export default function App() {
     settings: "Settings",
   };
 
-  // Determine if the current page is a status filter page
   const statusFilter = STATUS_PAGES[activePage] ?? "all";
   const isLibraryPage = [
     "library",
@@ -42,13 +46,29 @@ export default function App() {
     "plantowatch",
   ].includes(activePage);
 
+  function handleSelectAnime(anime: AnimeCardData) {
+    setSelectedAnime(anime);
+    // Clear search when entering detail view
+    setSearchQuery("");
+  }
+
+  function handleBack() {
+    setSelectedAnime(null);
+  }
+
   function renderPage() {
+    // Show detail page if an anime is selected
+    if (selectedAnime) {
+      return <SeriesDetailPage anime={selectedAnime} onBack={handleBack} />;
+    }
+
     if (isLibraryPage) {
       return (
         <LibraryPage
           searchQuery={searchQuery}
           onSeriesCountChange={setSeriesCount}
           statusFilter={statusFilter}
+          onSelectAnime={handleSelectAnime}
         />
       );
     }
@@ -65,11 +85,18 @@ export default function App() {
   return (
     <Layout
       activePage={activePage}
-      onNavigate={setActivePage}
+      onNavigate={(page) => {
+        setSelectedAnime(null); // clear detail view on nav
+        setActivePage(page);
+      }}
       seriesCount={seriesCount}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
-      pageTitle={pageTitles[activePage] ?? "Library"}
+      pageTitle={
+        selectedAnime
+          ? selectedAnime.name
+          : (pageTitles[activePage] ?? "Library")
+      }
     >
       {renderPage()}
     </Layout>

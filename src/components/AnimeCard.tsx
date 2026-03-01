@@ -15,6 +15,8 @@ export interface AnimeCardData {
   episodeCount: number | null;
   genres: string[];
   score?: number;
+  synopsis?: string; // ← add
+  seasons?: SeasonData[];
 }
 
 interface AnimeCardProps {

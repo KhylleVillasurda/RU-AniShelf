@@ -34,6 +34,13 @@ interface SeriesMetadata {
   status: string | null;
 }
 
+interface LibraryPageProps {
+  searchQuery: string;
+  onSeriesCountChange: (count: number) => void;
+  statusFilter?: StatusFilter;
+  onSelectAnime: (anime: AnimeCardData) => void;
+}
+
 type SortOption = "title_asc" | "title_desc" | "score_desc" | "episodes_desc";
 type StatusFilter =
   | "all"
@@ -59,6 +66,7 @@ export default function LibraryPage({
   searchQuery,
   onSeriesCountChange,
   statusFilter = "all",
+  onSelectAnime,
 }: LibraryPageProps) {
   const [folderPath, setFolderPath] = useState("");
   const [library, setLibrary] = useState<AnimeCardData[]>([]);
@@ -163,6 +171,8 @@ export default function LibraryPage({
             episodeCount: meta.episode_count,
             genres: meta.genres,
             score: meta.anilist_score ?? undefined,
+            synopsis: meta.synopsis ?? undefined,
+            seasons: series.seasons,
           });
         } catch {
           results.push({
@@ -172,6 +182,7 @@ export default function LibraryPage({
             episodesWatched: 0,
             episodeCount: series.episode_files.length,
             genres: [],
+            seasons: series.seasons,
           });
         }
 
@@ -368,7 +379,7 @@ export default function LibraryPage({
             <AnimeCard
               key={i}
               anime={anime}
-              onClick={() => console.log("Clicked:", anime.name)}
+              onClick={() => onSelectAnime(anime)}
             />
           ))}
         </div>

@@ -1,0 +1,344 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { AnimeCardData } from "../components/AnimeCard";
+import {
+  ArrowLeft,
+  Play,
+  CheckCircle,
+  PauseCircle,
+  BookmarkPlus,
+  Star,
+  Tv,
+  ChevronDown,
+  ChevronUp,
+  FileVideo,
+  Loader2,
+} from "lucide-react";
+
+interface SeriesDetailPageProps {
+  anime: AnimeCardData;
+  onBack: () => void;
+}
+
+const STATUS_CONFIG = {
+  watching: {
+    label: "Watching",
+    color: "#00d4ff",
+    bg: "rgba(0,212,255,0.15)",
+    border: "rgba(0,212,255,0.3)",
+    icon: <Play size={11} />,
+  },
+  completed: {
+    label: "Completed",
+    color: "#00ff9d",
+    bg: "rgba(0,255,157,0.15)",
+    border: "rgba(0,255,157,0.3)",
+    icon: <CheckCircle size={11} />,
+  },
+  on_hold: {
+    label: "On Hold",
+    color: "#ffaa00",
+    bg: "rgba(255,170,0,0.15)",
+    border: "rgba(255,170,0,0.3)",
+    icon: <PauseCircle size={11} />,
+  },
+  plan_to_watch: {
+    label: "Plan to Watch",
+    color: "#667799",
+    bg: "rgba(100,120,150,0.15)",
+    border: "rgba(100,120,150,0.3)",
+    icon: <BookmarkPlus size={11} />,
+  },
+};
+
+export default function SeriesDetailPage({
+  anime,
+  onBack,
+}: SeriesDetailPageProps) {
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(
+    // Expand the first season by default
+    new Set(
+      anime.seasons?.[0]?.season_name ? [anime.seasons[0].season_name] : [],
+    ),
+  );
+  const [openingFile, setOpeningFile] = useState<string | null>(null);
+  const [openError, setOpenError] = useState("");
+
+  const status = STATUS_CONFIG[anime.status];
+
+  function toggleSeason(seasonName: string) {
+    setExpandedSeasons((prev) => {
+      const next = new Set(prev);
+      next.has(seasonName) ? next.delete(seasonName) : next.add(seasonName);
+      return next;
+    });
+  }
+
+  async function handlePlayEpisode(filePath: string, fileName: string) {
+    setOpeningFile(fileName);
+    setOpenError("");
+    try {
+      await invoke("open_episode", { filePath });
+    } catch (err) {
+      setOpenError(`Could not open file: ${err}`);
+    } finally {
+      setOpeningFile(null);
+    }
+  }
+
+  // Clean up episode filename for display
+  // Removes common torrent cruft like [1080p], (HEVC), etc.
+  function cleanEpisodeName(fileName: string): string {
+    return fileName
+      .replace(/\.[^.]+$/, "") // remove extension
+      .replace(/\[.*?\]/g, "") // remove [tags]
+      .replace(/\(.*?\)/g, "") // remove (tags)
+      .replace(/\s+/g, " ") // collapse spaces
+      .trim();
+  }
+
+  return (
+    <div className="flex flex-col gap-6 h-full">
+      {/* ── Back button ── */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 text-[#8899bb] text-sm
+          hover:text-[#00d4ff] transition-colors self-start"
+      >
+        <ArrowLeft size={15} />
+        Back to Library
+      </button>
+
+      {/* ── Hero Section ── */}
+      <div className="flex gap-6">
+        {/* Cover art */}
+        <div className="flex-shrink-0 w-[160px]">
+          {anime.coverUrl ? (
+            <img
+              src={anime.coverUrl}
+              alt={anime.name}
+              className="w-full rounded-lg border border-[#00d4ff]/15
+                shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+            />
+          ) : (
+            <div
+              className="w-full aspect-[2/3] rounded-lg bg-[#13131f]
+              border border-[#00d4ff]/10 flex items-center justify-center"
+            >
+              <Tv size={32} className="text-[#445566]" />
+            </div>
+          )}
+        </div>
+
+        {/* Series info */}
+        <div className="flex flex-col gap-3 flex-1 min-w-0">
+          <div>
+            <h1 className="text-2xl font-black text-[#f0f4ff] leading-tight mb-1">
+              {anime.name}
+            </h1>
+          </div>
+
+          {/* Stats row */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Status badge */}
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded
+                text-[11px] font-bold tracking-wide uppercase border"
+              style={{
+                color: status.color,
+                background: status.bg,
+                borderColor: status.border,
+              }}
+            >
+              {status.icon}
+              {status.label}
+            </div>
+
+            {/* Score */}
+            {anime.score && (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded
+                bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
+              >
+                <Star size={11} className="text-[#ffaa00]" />
+                {anime.score} / 10
+              </div>
+            )}
+
+            {/* Episode count */}
+            {anime.episodeCount && (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded
+                bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
+              >
+                <Tv size={11} />
+                {anime.episodeCount} episodes
+              </div>
+            )}
+          </div>
+
+          {/* Genres */}
+          {anime.genres.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {anime.genres.map((g, i) => (
+                <span
+                  key={i}
+                  className="px-2.5 py-0.5 rounded text-[10px]
+                  font-bold text-[#0099cc] bg-[#00d4ff]/07
+                  border border-[#00d4ff]/15"
+                >
+                  {g}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Synopsis */}
+          {anime.synopsis && (
+            <p
+              className="text-[#8899bb] text-sm leading-relaxed
+              line-clamp-4"
+            >
+              {anime.synopsis}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Error message ── */}
+      {openError && (
+        <p
+          className="text-[#ff4466] text-sm bg-[#ff4466]/10
+          border border-[#ff4466]/20 rounded-md px-4 py-2"
+        >
+          {openError}
+        </p>
+      )}
+
+      {/* ── Episodes Section ── */}
+      <div className="flex flex-col gap-3">
+        <h2
+          className="text-xs font-bold tracking-[0.15em] uppercase
+          text-[#445566]"
+        >
+          Episodes
+        </h2>
+
+        {anime.seasons && anime.seasons.length > 0 ? (
+          anime.seasons.map((season) => {
+            const isExpanded = expandedSeasons.has(season.season_name);
+            return (
+              <div
+                key={season.season_name}
+                className="bg-[#0e0e1a] border border-[#00d4ff]/10 rounded-lg
+                  overflow-hidden"
+              >
+                {/* Season header */}
+                <button
+                  onClick={() => toggleSeason(season.season_name)}
+                  className="w-full flex items-center justify-between
+                    px-4 py-3 hover:bg-[#1c1c30] transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-[#f0f4ff]">
+                      {season.season_name}
+                    </span>
+                    <span className="text-xs text-[#445566]">
+                      {season.episode_files.length} episodes
+                    </span>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronUp size={14} className="text-[#445566]" />
+                  ) : (
+                    <ChevronDown size={14} className="text-[#445566]" />
+                  )}
+                </button>
+
+                {/* Episode list */}
+                {isExpanded && (
+                  <div className="border-t border-[#00d4ff]/10">
+                    {season.episode_files.map((ep, i) => {
+                      const isOpening = openingFile === ep.file_name;
+                      return (
+                        <button
+                          key={i}
+                          onClick={() =>
+                            handlePlayEpisode(ep.file_path, ep.file_name)
+                          }
+                          disabled={!!openingFile}
+                          className="w-full flex items-center gap-3 px-4 py-2.5
+                            border-b border-[#00d4ff]/05 last:border-0
+                            hover:bg-[#1c1c30] transition-colors
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                            group text-left"
+                        >
+                          {/* Episode number */}
+                          <span
+                            className="text-xs text-[#445566] w-6
+                            flex-shrink-0 text-right"
+                          >
+                            {i + 1}
+                          </span>
+
+                          {/* Play icon */}
+                          <div
+                            className="w-6 h-6 rounded-full flex items-center
+                            justify-center bg-[#13131f] border border-[#00d4ff]/10
+                            group-hover:border-[#00d4ff]/40
+                            group-hover:bg-[#00d4ff]/10
+                            transition-all flex-shrink-0"
+                          >
+                            {isOpening ? (
+                              <Loader2
+                                size={10}
+                                className="animate-spin text-[#00d4ff]"
+                              />
+                            ) : (
+                              <Play
+                                size={9}
+                                className="text-[#445566]
+                                  group-hover:text-[#00d4ff] transition-colors
+                                  ml-0.5"
+                              />
+                            )}
+                          </div>
+
+                          {/* Episode name */}
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span
+                              className="text-xs text-[#8899bb]
+                              group-hover:text-[#f0f4ff] transition-colors
+                              truncate"
+                            >
+                              {cleanEpisodeName(ep.file_name)}
+                            </span>
+                            <span className="text-[10px] text-[#445566] truncate">
+                              {ep.file_name}
+                            </span>
+                          </div>
+
+                          {/* File icon */}
+                          <FileVideo
+                            size={12}
+                            className="text-[#445566] flex-shrink-0"
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div
+            className="flex items-center justify-center py-12
+            text-[#445566] text-sm"
+          >
+            No episode files found
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
