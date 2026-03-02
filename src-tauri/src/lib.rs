@@ -47,11 +47,12 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
 pub fn run() {
     let conn = db::initialize_db().expect("Failed to initialize database");
 
-    println!("Database initialized successfully");
+    println!("✅ Database initialized successfully");
 
     tauri::Builder::default()
         .manage(DbState(Mutex::new(conn)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init()) // ← add this
         .invoke_handler(tauri::generate_handler![
             scan_anime_folder,
             fetch_metadata,

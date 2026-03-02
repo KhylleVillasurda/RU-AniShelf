@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   Settings,
   FolderOpen,
@@ -167,6 +168,27 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleBrowsePlayer() {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [
+          {
+            name: "Executable",
+            extensions: ["exe"],
+          },
+        ],
+        title: "Select Video Player Executable",
+      });
+
+      if (selected && typeof selected === "string") {
+        updateSetting("player_path", selected);
+      }
+    } catch (err) {
+      console.error("File picker error:", err);
+    }
+  }
+
   function updateSetting<K extends keyof SettingsState>(
     key: K,
     value: SettingsState[K],
@@ -191,13 +213,37 @@ export default function SettingsPage() {
         title="Video Player"
         description="Configure your preferred external video player"
       >
-        <SettingsInput
-          label="Player Executable Path"
-          value={settings.player_path}
-          onChange={(v) => updateSetting("player_path", v)}
-          placeholder="e.g. C:\Program Files\VideoLAN\VLC\vlc.exe"
-          hint="Leave empty to use your system default player. Supports VLC, MPC-HC, MPV and any other player."
-        />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-[#8899bb] tracking-wide">
+            Player Executable Path
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={settings.player_path}
+              onChange={(e) => updateSetting("player_path", e.target.value)}
+              placeholder="e.g. C:\Program Files\VideoLAN\VLC\vlc.exe"
+              className="flex-1 bg-[#13131f] border border-[#00d4ff]/10
+          rounded-md px-3 py-2 text-sm text-[#f0f4ff]
+          placeholder-[#445566] outline-none
+          focus:border-[#00d4ff]/40 transition-colors"
+            />
+            <button
+              onClick={handleBrowsePlayer}
+              className="flex items-center gap-2 px-4 py-2 rounded-md
+          border border-[#00d4ff]/15 text-[#8899bb] text-sm
+          hover:border-[#00d4ff]/40 hover:text-[#00d4ff]
+          hover:bg-[#00d4ff]/07 transition-all flex-shrink-0"
+            >
+              <FolderOpen size={13} />
+              Browse
+            </button>
+          </div>
+          <p className="text-[10px] text-[#445566]">
+            Leave empty to use your system default player. Supports VLC, MPC-HC,
+            MPV and any other player.
+          </p>
+        </div>
       </SettingsSection>
 
       {/* ── Library ── */}
