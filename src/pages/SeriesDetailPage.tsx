@@ -22,6 +22,7 @@ import {
 interface SeriesDetailPageProps {
   anime: AnimeCardData;
   onBack: () => void;
+  onStatusUpdate?: (id: number, status: AnimeCardData["status"]) => void;
 }
 
 const STATUS_CONFIG = {
@@ -58,6 +59,7 @@ const STATUS_CONFIG = {
 export default function SeriesDetailPage({
   anime,
   onBack,
+  onStatusUpdate,
 }: SeriesDetailPageProps) {
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(
     // Expand the first season by default
@@ -90,6 +92,7 @@ export default function SeriesDetailPage({
         status: newStatus,
       });
       setCurrentStatus(newStatus);
+      onStatusUpdate?.(anime.id, newStatus);
     } catch (err) {
       console.error("Failed to update status:", err);
     } finally {
@@ -181,17 +184,46 @@ export default function SeriesDetailPage({
           {/* Stats row */}
           <div className="flex items-center gap-3 flex-wrap">
             {/* Status badge */}
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded
-                text-[11px] font-bold tracking-wide uppercase border"
-              style={{
-                color: status.color,
-                background: status.bg,
-                borderColor: status.border,
-              }}
-            >
-              {status.icon}
-              {status.label}
+            {/* Interactive status selector */}
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-[10px] font-bold tracking-[0.15em]
+    uppercase text-[#445566]"
+              >
+                Status
+              </span>
+              <div className="flex gap-2 flex-wrap">
+                {(
+                  Object.keys(STATUS_CONFIG) as Array<
+                    keyof typeof STATUS_CONFIG
+                  >
+                ).map((statusKey) => {
+                  const config = STATUS_CONFIG[statusKey];
+                  const isActive = currentStatus === statusKey;
+                  return (
+                    <button
+                      key={statusKey}
+                      onClick={() =>
+                        handleStatusChange(statusKey as AnimeCardData["status"])
+                      }
+                      disabled={updatingStatus}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded
+              text-[11px] font-bold tracking-wide uppercase border
+              transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        color: isActive ? config.color : "#445566",
+                        background: isActive ? config.bg : "transparent",
+                        borderColor: isActive
+                          ? config.border
+                          : "rgba(100,120,150,0.2)",
+                      }}
+                    >
+                      {config.icon}
+                      {config.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Score */}

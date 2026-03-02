@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { AnimeCardData } from "./components/AnimeCard";
 import Layout from "./components/Layout";
 import LibraryPage from "./pages/LibraryPage";
 import SeriesDetailPage from "./pages/SeriesDetailPage";
-import { AnimeCardData } from "./components/AnimeCard";
 import HistoryPage from "./pages/HistoryPage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -24,6 +24,9 @@ export default function App() {
   const [activePage, setActivePage] = useState("library");
   const [searchQuery, setSearchQuery] = useState("");
   const [seriesCount, setSeriesCount] = useState(0);
+  const [statusUpdates, setStatusUpdates] = useState<
+    Record<number, AnimeCardData["status"]>
+  >({});
   const [selectedAnime, setSelectedAnime] = useState<AnimeCardData | null>(
     null,
   );
@@ -48,6 +51,10 @@ export default function App() {
     "plantowatch",
   ].includes(activePage);
 
+  function handleStatusUpdate(id: number, status: AnimeCardData["status"]) {
+    setStatusUpdates((prev) => ({ ...prev, [id]: status }));
+  }
+
   function handleSelectAnime(anime: AnimeCardData) {
     setSelectedAnime(anime);
     // Clear search when entering detail view
@@ -61,7 +68,13 @@ export default function App() {
   function renderPage() {
     // Show detail page if an anime is selected
     if (selectedAnime) {
-      return <SeriesDetailPage anime={selectedAnime} onBack={handleBack} />;
+      return (
+        <SeriesDetailPage
+          anime={selectedAnime}
+          onBack={handleBack}
+          onStatusUpdate={handleStatusUpdate}
+        />
+      );
     }
 
     if (isLibraryPage) {
@@ -71,6 +84,7 @@ export default function App() {
           onSeriesCountChange={setSeriesCount}
           statusFilter={statusFilter}
           onSelectAnime={handleSelectAnime}
+          statusUpdates={statusUpdates}
         />
       );
     }

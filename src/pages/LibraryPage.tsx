@@ -73,6 +73,7 @@ interface LibraryPageProps {
   onSeriesCountChange: (count: number) => void;
   statusFilter?: StatusFilter;
   onSelectAnime: (anime: AnimeCardData) => void;
+  statusUpdates: Record<number, AnimeCardData["status"]>;
 }
 
 const SORT_LABELS: Record<SortOption, string> = {
@@ -211,6 +212,7 @@ export default function LibraryPage({
   onSeriesCountChange,
   statusFilter = "all",
   onSelectAnime,
+  statusUpdates,
 }: LibraryPageProps) {
   const [folderPath, setFolderPath] = useState("");
   const [library, setLibrary] = useState<AnimeCardData[]>([]);
@@ -267,7 +269,13 @@ export default function LibraryPage({
 
   // Apply all filters and sorting
   const filtered = useMemo(() => {
-    let result = [...library];
+    let result = library.map((anime) => ({
+      ...anime,
+      status:
+        anime.id && statusUpdates[anime.id]
+          ? statusUpdates[anime.id]
+          : anime.status,
+    }));
 
     if (searchQuery.trim()) {
       result = result.filter((anime) =>
@@ -299,7 +307,7 @@ export default function LibraryPage({
     });
 
     return result;
-  }, [library, searchQuery, statusFilter, activeGenre, sortBy]);
+  }, [library, searchQuery, statusFilter, activeGenre, sortBy, statusUpdates]);
 
   async function fetchWithRetry(
     title: string,
