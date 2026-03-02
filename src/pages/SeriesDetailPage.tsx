@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  AnimeCardData,
-  SeasonData,
-  EpisodeFileData,
-} from "../components/AnimeCard";
+import { AnimeCardData, EpisodeFileData } from "../components/AnimeCard";
 import {
   ArrowLeft,
   Play,
@@ -69,8 +65,6 @@ export default function SeriesDetailPage({
   );
   const [openingFile, setOpeningFile] = useState<string | null>(null);
   const [openError, setOpenError] = useState("");
-
-  const status = STATUS_CONFIG[anime.status];
 
   function toggleSeason(seasonName: string) {
     setExpandedSeasons((prev) => {

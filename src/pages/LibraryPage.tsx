@@ -368,10 +368,8 @@ export default function LibraryPage({
       });
 
       try {
-        const meta = await invoke<SeriesMetadata>("fetch_metadata", {
-          title: entry.editedName, // ← use user's confirmed/edited title
-        });
-        console.log("✅ Got metadata:", meta.title);
+        const meta = await fetchWithRetry(entry.editedName);
+        console.log("SUCCESS: Got metadata:", meta.title);
 
         await new Promise((resolve) => setTimeout(resolve, 2500));
 
