@@ -174,3 +174,55 @@ pub async fn fetch_anilist_metadata(title: &str) -> Result<SeriesMetadata, Strin
         status: media.status,
     })
 }
+
+/// Downloads a cover image and saves it locally
+/// Returns the local file path
+pub async fn download_cover(cover_url: &str, series_title: &str) -> Result<String, String> {
+    // Build the local covers directory path
+    let mut covers_dir = dirs::data_dir().ok_or("Could not find app data directory")?;
+    covers_dir.push("ru-anishelf");
+    covers_dir.push("covers");
+
+    // Create directory if it doesn't exist
+    std::fs::create_dir_all(&covers_dir)
+        .map_err(|e| format!("Failed to create covers dir: {}", e))?;
+
+    // Sanitize the title for use as a filename
+    let safe_title = series_title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+
+    let file_name = format!("{}.jpg", safe_title);
+    let file_path = covers_dir.join(&file_name);
+
+    // Skip download if already cached
+    if file_path.exists() {
+        return Ok(file_path.to_string_lossy().to_string());
+    }
+
+    // Download the image
+    let client = Client::builder()
+        .use_rustls_tls()
+        .build()
+        .map_err(|e| format!("Failed to build client: {}", e))?;
+
+    let bytes = client
+        .get(cover_url)
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {}", e))?
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read bytes: {}", e))?;
+
+    std::fs::write(&file_path, &bytes).map_err(|e| format!("Failed to save cover: {}", e))?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}

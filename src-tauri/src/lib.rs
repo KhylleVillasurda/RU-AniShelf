@@ -61,6 +61,9 @@ pub fn run() {
             get_setting,
             get_all_settings,
             clear_history,
+            get_library,
+            save_series_to_library,
+            update_series_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -178,4 +181,109 @@ struct WatchEventDto {
     episode_number: i32,
     season_name: String,
     watched_at: String,
+}
+
+#[tauri::command]
+fn get_library(state: tauri::State<DbState>) -> Result<Vec<SeriesDto>, String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    let series = db::get_all_series(&conn).map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(series
+        .into_iter()
+        .map(|s| SeriesDto {
+            id: s.id,
+            title: s.title,
+            title_english: s.title_english,
+            title_native: s.title_native,
+            local_path: s.local_path,
+            cover_local_path: s.cover_local_path,
+            cover_remote_url: s.cover_remote_url,
+            synopsis: s.synopsis,
+            episode_count: s.episode_count,
+            status: s.status,
+            anilist_id: s.anilist_id,
+            anilist_score: s.anilist_score,
+            genres: s.genres,
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn update_series_status(
+    state: tauri::State<DbState>,
+    series_id: i64,
+    status: String,
+) -> Result<(), String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    db::update_series_status(&conn, series_id, &status).map_err(|e| format!("DB error: {}", e))
+}
+
+#[tauri::command]
+async fn save_series_to_library(
+    state: tauri::State<'_, DbState>,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    local_path: String,
+    cover_remote_url: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    anilist_id: Option<i64>,
+    anilist_score: Option<f64>,
+    genres: Vec<String>,
+) -> Result<i64, String> {
+    // Download cover art locally if available
+    let cover_local_path = if let Some(ref url) = cover_remote_url {
+        match metadata::download_cover(url, &title).await {
+            Ok(path) => Some(path),
+            Err(_) => None, // silently fall back to remote url
+        }
+    } else {
+        None
+    };
+
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    db::upsert_series(
+        &conn,
+        &title,
+        title_english.as_deref(),
+        title_native.as_deref(),
+        &local_path,
+        cover_local_path.as_deref(),
+        cover_remote_url.as_deref(),
+        synopsis.as_deref(),
+        episode_count,
+        "plan_to_watch",
+        anilist_id,
+        anilist_score,
+        &genres,
+    )
+    .map_err(|e| format!("DB error: {}", e))
+}
+
+#[derive(serde::Serialize)]
+struct SeriesDto {
+    id: i64,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    local_path: String,
+    cover_local_path: Option<String>,
+    cover_remote_url: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    status: String,
+    anilist_id: Option<i64>,
+    anilist_score: Option<f64>,
+    genres: Vec<String>,
 }

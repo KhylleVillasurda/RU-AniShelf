@@ -32,7 +32,7 @@ pub fn initialize_db() -> Result<Connection> {
             synopsis          TEXT,
             episode_count     INTEGER,
             status            TEXT NOT NULL DEFAULT 'plan_to_watch',
-            anilist_id        INTEGER,
+            anilist_id        INTEGER UNIQUE,
             mal_id            INTEGER,
             anilist_score     REAL,
             mal_score         REAL,
@@ -85,7 +85,7 @@ pub fn initialize_db() -> Result<Connection> {
 
     Ok(conn)
 }
-
+//============================================================ EPISODE WATCH RELATED FUNCTIONS ============================================================
 /// Saves a watch event to the history table
 pub fn save_watch_event(
     conn: &Connection,
@@ -146,6 +146,178 @@ pub fn get_watch_history(conn: &Connection, limit: i32) -> Result<Vec<WatchEvent
     Ok(events)
 }
 
+pub fn clear_watch_history(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM watch_history", [])?;
+    Ok(())
+}
+
+pub fn upsert_series(
+    conn: &Connection,
+    title: &str,
+    title_english: Option<&str>,
+    title_native: Option<&str>,
+    local_path: &str,
+    cover_local_path: Option<&str>,
+    cover_remote_url: Option<&str>,
+    synopsis: Option<&str>,
+    episode_count: Option<i32>,
+    status: &str,
+    anilist_id: Option<i64>,
+    anilist_score: Option<f64>,
+    genres: &[String],
+) -> Result<i64> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Insert or update series record
+    conn.execute(
+        "INSERT INTO series (
+            title, title_english, title_native, local_path,
+            cover_local_path, cover_remote_url, synopsis,
+            episode_count, status, anilist_id, anilist_score,
+            created_at, updated_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12)
+        ON CONFLICT(anilist_id) DO UPDATE SET
+            title = excluded.title,
+            title_english = excluded.title_english,
+            local_path = excluded.local_path,
+            cover_local_path = excluded.cover_local_path,
+            cover_remote_url = excluded.cover_remote_url,
+            synopsis = excluded.synopsis,
+            episode_count = excluded.episode_count,
+            anilist_score = excluded.anilist_score,
+            updated_at = excluded.updated_at",
+        rusqlite::params![
+            title,
+            title_english,
+            title_native,
+            local_path,
+            cover_local_path,
+            cover_remote_url,
+            synopsis,
+            episode_count,
+            status,
+            anilist_id,
+            anilist_score,
+            now
+        ],
+    )?;
+
+    let series_id = conn.last_insert_rowid();
+
+    // Save genres — clear old ones first then reinsert
+    conn.execute(
+        "DELETE FROM series_genres WHERE series_id = ?1",
+        [series_id],
+    )?;
+
+    for genre in genres {
+        // Insert genre if not exists
+        conn.execute("INSERT OR IGNORE INTO genres (name) VALUES (?1)", [genre])?;
+
+        // Get genre id
+        let genre_id: i64 =
+            conn.query_row("SELECT id FROM genres WHERE name = ?1", [genre], |row| {
+                row.get(0)
+            })?;
+
+        // Link to series
+        conn.execute(
+            "INSERT OR IGNORE INTO series_genres (series_id, genre_id)
+             VALUES (?1, ?2)",
+            rusqlite::params![series_id, genre_id],
+        )?;
+    }
+
+    Ok(series_id)
+}
+
+/// Loads all series from the database with their genres
+pub fn get_all_series(conn: &Connection) -> Result<Vec<SeriesRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, title_english, title_native, local_path,
+                cover_local_path, cover_remote_url, synopsis,
+                episode_count, status, anilist_id, mal_id, anilist_score
+         FROM series
+         ORDER BY title ASC",
+    )?;
+
+    let series_list: Vec<SeriesRecord> = stmt
+        .query_map([], |row| {
+            Ok(SeriesRecord {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                title_english: row.get(2)?,
+                title_native: row.get(3)?,
+                local_path: row.get(4)?,
+                cover_local_path: row.get(5)?,
+                cover_remote_url: row.get(6)?,
+                synopsis: row.get(7)?,
+                episode_count: row.get(8)?,
+                status: row.get(9)?,
+                anilist_id: row.get(10)?,
+                mal_id: row.get(11)?,
+                anilist_score: row.get(12)?,
+                genres: vec![], // filled below
+            })
+        })?
+        .flatten()
+        .collect();
+
+    // Load genres for each series
+    let mut result = Vec::new();
+    for mut series in series_list {
+        let mut genre_stmt = conn.prepare(
+            "SELECT g.name FROM genres g
+             JOIN series_genres sg ON sg.genre_id = g.id
+             WHERE sg.series_id = ?1",
+        )?;
+        series.genres = genre_stmt
+            .query_map([series.id], |row| row.get(0))?
+            .flatten()
+            .collect();
+        result.push(series);
+    }
+
+    Ok(result)
+}
+
+/// Checks if a series already exists in the DB by local path
+pub fn series_exists(conn: &Connection, local_path: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM series WHERE local_path = ?1",
+        [local_path],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Updates the status of a series
+pub fn update_series_status(conn: &Connection, series_id: i64, status: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE series SET status = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![status, chrono::Utc::now().to_rfc3339(), series_id],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug)]
+pub struct SeriesRecord {
+    pub id: i64,
+    pub title: String,
+    pub title_english: Option<String>,
+    pub title_native: Option<String>,
+    pub local_path: String,
+    pub cover_local_path: Option<String>,
+    pub cover_remote_url: Option<String>,
+    pub synopsis: Option<String>,
+    pub episode_count: Option<i32>,
+    pub status: String,
+    pub anilist_id: Option<i64>,
+    pub mal_id: Option<i64>,
+    pub anilist_score: Option<f64>,
+    pub genres: Vec<String>,
+}
+
 /// Struct representing a single watch history entry
 #[derive(Debug)]
 pub struct WatchEvent {
@@ -159,6 +331,7 @@ pub struct WatchEvent {
     pub watched_at: String,
 }
 
+//============================================================ SETTINGS FUNCTIONS ============================================================
 // Saves a key-value setting to the settings table
 pub fn save_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     conn.execute(
@@ -180,9 +353,4 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
-}
-
-pub fn clear_watch_history(conn: &Connection) -> Result<()> {
-    conn.execute("DELETE FROM watch_history", [])?;
-    Ok(())
 }
