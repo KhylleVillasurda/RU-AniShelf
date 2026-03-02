@@ -84,14 +84,74 @@ const SORT_LABELS: Record<SortOption, string> = {
 // Strips torrent prefixes like [Vodes], [SubGroup], (1080p) etc.
 // before sending to AniList for a cleaner match
 function cleanTitleForSearch(raw: string): string {
-  return raw
-    .replace(/^\[.*?\]\s*/g, "") // remove leading [tags]
-    .replace(/\(.*?\)/g, "") // remove (tags)
-    .replace(/\[.*?\]/g, "") // remove remaining [tags]
-    .replace(/\d{3,4}p/gi, "") // remove 720p, 1080p etc
-    .replace(/[-_]/g, " ") // replace dashes/underscores
-    .replace(/\s+/g, " ") // collapse spaces
-    .trim();
+  return (
+    raw
+      // Handle FLAC5.1, DD5.1 etc BEFORE dot replacement
+      .replace(/\b(FLAC|DD|DDP|AC3|DTS)\d*\.\d+\b/gi, "")
+
+      // Remove episode/volume ranges like 1-1006, 001-131, 1-23
+      .replace(/\b\d{1,4}[-–]\d{1,4}\b/g, "")
+
+      // Remove "+ Movies", "+ OVA", "+ Specials" with optional numbers
+      .replace(/\+\s*(Movies?|OVA|ONA|Specials?|Films?)(\s+[\d\s-]+)?/gi, "")
+
+      // Remove batch/collection keywords
+      .replace(
+        /\b(Batch|Complete|Collection|Series|Season|Vol\.?\s*\d+)\b/gi,
+        "",
+      )
+
+      // Replace dots used as separators
+      .replace(/(?<!\.)\.(?!\.)/g, " ")
+
+      // Remove leading group tags like [Vodes], [PsyPlex]
+      .replace(/^\[.*?\]\s*/g, "")
+
+      // Remove all remaining square bracket content
+      .replace(/\[.*?\]/g, "")
+
+      // Remove parenthetical content like (2025)
+      .replace(/\(.*?\)/g, "")
+
+      // Remove season notation: S01, S1, S01E01
+      .replace(/\bS\d{1,2}(E\d{1,2})?\b/gi, "")
+
+      // Remove video quality tags
+      .replace(
+        /\b(1080p?|720p?|480p?|4K|2160p?|BD|BDRip|BluRay|WEBRip|WEB-DL|HDTV|DVDRIP)\b/gi,
+        "",
+      )
+
+      // Remove codec tags
+      .replace(
+        /\b(x264|x265|HEVC|AVC|Hi10p|10bit|8bit|FLAC|AAC|DD\+?|DTS|AC3|MP3|Opus)\b/gi,
+        "",
+      )
+
+      // Remove short uppercase release group tags (2-4 capital letters)
+      // e.g. CTR, YG, ASW — but NOT real words like BD
+      .replace(/\b(?!BD\b|BC\b)[A-Z]{2,4}\b/g, "")
+
+      // Remove release group names after trailing dash
+      .replace(/-\w+$/g, "")
+
+      // Remove audio tags
+      .replace(/\b(Dual[\s-]?Audio|Multi[\s-]?Audio|Dubbed|Subbed|RAW)\b/gi, "")
+
+      // Remove standalone 3+ digit numbers (episode numbers)
+      .replace(/\b\d{3,}\b/g, "")
+
+      // Remove standalone years
+      .replace(/\b(19|20)\d{2}\b/g, "")
+
+      // Replace dashes and underscores with spaces
+      .replace(/[-_]/g, " ")
+
+      // Collapse multiple spaces
+      .replace(/\s+/g, " ")
+
+      .trim()
+  );
 }
 
 // Converts a local file path to a Tauri asset URL
@@ -318,8 +378,9 @@ export default function LibraryPage({
           });
         } catch {
           // Metadata fetch failed — save with basic info
+          const cleanedName = cleanTitleForSearch(series.name);
           results.push({
-            name: series.name,
+            name: cleanedName,
             coverUrl: null,
             status: "plan_to_watch",
             episodesWatched: 0,
