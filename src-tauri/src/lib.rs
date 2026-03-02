@@ -16,7 +16,6 @@ async fn fetch_metadata(title: String) -> Result<metadata::SeriesMetadata, Strin
 
 #[tauri::command]
 async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Result<(), String> {
-    // Check if user has configured a custom player
     let player_path = {
         let conn = state
             .0
@@ -26,12 +25,14 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
     };
 
     match player_path {
-        Some(player) if !player.is_empty() => {
-            // Launch with configured player
+        Some(player) if !player.trim().is_empty() => {
+            // Trim whitespace from saved player path
+            let player = player.trim().to_string();
+
             std::process::Command::new(&player)
                 .arg(&file_path)
                 .spawn()
-                .map_err(|e| format!("Failed to launch player: {}", e))?;
+                .map_err(|e| format!("Failed to launch player '{}': {}", player, e))?;
         }
         _ => {
             // Fall back to OS default
