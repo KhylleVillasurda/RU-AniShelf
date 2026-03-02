@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import AnimeCard, { AnimeCardData, SeasonData } from "../components/AnimeCard";
 import { FolderOpen, Loader2, ChevronDown, RefreshCw } from "lucide-react";
+import ScanConfirmModal, { ScanEntry } from "../components/ScanConfirmModal";
 
 interface EpisodeFile {
   file_name: string;
@@ -221,6 +222,8 @@ export default function LibraryPage({
   const [sortBy, setSortBy] = useState<SortOption>("title_asc");
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [pendingScan, setPendingScan] = useState<ScanEntry[] | null>(null);
+  const [isRescanning, setIsRescanning] = useState(false);
 
   // Load library from SQLite on startup
   useEffect(() => {
@@ -298,7 +301,111 @@ export default function LibraryPage({
     return result;
   }, [library, searchQuery, statusFilter, activeGenre, sortBy]);
 
-  async function handleScanAndFetch() {
+  async function handleConfirmAndFetch(confirmedEntries: ScanEntry[]) {
+    setPendingScan(null);
+    setFetchingMetadata(true);
+    setProgress({ current: 0, total: confirmedEntries.length });
+
+    // We still need the full DiscoveredSeries for seasons/episodes
+    // Re-scan to get the full data (it's fast since it's just file system)
+    const discovered = await invoke<DiscoveredSeries[]>("scan_anime_folder", {
+      path: folderPath,
+    });
+
+    const results: AnimeCardData[] = [];
+
+    for (let i = 0; i < confirmedEntries.length; i++) {
+      const entry = confirmedEntries[i];
+      const series = discovered.find((d) => d.path === entry.path);
+      setProgress({ current: i + 1, total: confirmedEntries.length });
+
+      if (!series) continue;
+
+      try {
+        const meta = await invoke<SeriesMetadata>("fetch_metadata", {
+          title: entry.editedName, // ← use user's confirmed/edited title
+        });
+
+        const allEpisodes: [number, string, string, string][] = [];
+        let epNumber = 1;
+        for (const season of series.seasons) {
+          for (const ep of season.episode_files) {
+            allEpisodes.push([
+              epNumber++,
+              ep.file_path,
+              ep.file_name,
+              season.season_name,
+            ]);
+          }
+        }
+
+        const savedId = await invoke<number>("save_series_to_library", {
+          title: meta.title,
+          titleEnglish: meta.title_english,
+          titleNative: meta.title_native,
+          localPath: series.path,
+          coverRemoteUrl: meta.cover_url,
+          synopsis: meta.synopsis,
+          episodeCount: meta.episode_count,
+          anilistId: meta.anilist_id,
+          anilistScore: meta.anilist_score,
+          genres: meta.genres,
+          episodes: allEpisodes,
+          forceRefresh: isRescanning,
+        });
+
+        results.push({
+          id: savedId,
+          name: meta.title,
+          coverUrl: meta.cover_url,
+          status: "plan_to_watch",
+          episodesWatched: 0,
+          episodeCount: meta.episode_count,
+          genres: meta.genres,
+          score: meta.anilist_score ?? undefined,
+          synopsis: meta.synopsis ?? undefined,
+          seasons: series.seasons,
+        });
+      } catch {
+        const cleanedName = cleanTitleForSearch(series.name);
+        results.push({
+          name: cleanedName,
+          coverUrl: null,
+          status: "plan_to_watch",
+          episodesWatched: 0,
+          episodeCount: series.episode_files.length,
+          genres: [],
+          seasons: series.seasons,
+        });
+      }
+
+      setLibrary([...results]);
+      onSeriesCountChange(results.length);
+    }
+
+    setHasLibrary(true);
+    setIsRescanning(false);
+
+    await invoke("save_setting", {
+      key: "library_folder",
+      value: folderPath,
+    });
+
+    setFetchingMetadata(false);
+  }
+
+  async function handleRescan() {
+    setIsRescanning(true); // ← marks this as a rescan
+    setHasLibrary(false);
+    setLibrary([]);
+    setActiveGenre(null);
+    onSeriesCountChange(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await handleScan();
+  }
+
+  async function handleScan() {
     if (!folderPath.trim()) {
       setError("Please enter your anime folder path");
       return;
@@ -314,98 +421,27 @@ export default function LibraryPage({
 
       if (discovered.length === 0) {
         setError("No anime found in that folder");
-        setScanning(false);
         return;
       }
 
-      setScanning(false);
-      setFetchingMetadata(true);
-      setProgress({ current: 0, total: discovered.length });
-
-      const results: AnimeCardData[] = [];
-
-      for (let i = 0; i < discovered.length; i++) {
-        const series = discovered[i];
-        setProgress({ current: i + 1, total: discovered.length });
-
-        // Clean the folder name before searching AniList
-        const cleanedTitle = cleanTitleForSearch(series.name);
-
-        try {
-          const meta = await invoke<SeriesMetadata>("fetch_metadata", {
-            title: cleanedTitle,
-          });
-
-          const allEpisodes: [number, string, string, string][] = [];
-          let epNumber = 1;
-          for (const season of series.seasons) {
-            for (const ep of season.episode_files) {
-              allEpisodes.push([
-                epNumber++,
-                ep.file_path,
-                ep.file_name,
-                season.season_name,
-              ]);
-            }
-          }
-
-          // Save to SQLite — this also downloads cover art locally
-          const savedId = await invoke<number>("save_series_to_library", {
-            title: meta.title,
-            titleEnglish: meta.title_english,
-            titleNative: meta.title_native,
-            localPath: series.path,
-            coverRemoteUrl: meta.cover_url,
-            synopsis: meta.synopsis,
-            episodeCount: meta.episode_count,
-            anilistId: meta.anilist_id,
-            anilistScore: meta.anilist_score,
-            genres: meta.genres,
-            episodes: allEpisodes,
-          });
-
-          results.push({
-            id: savedId,
-            name: meta.title,
-            coverUrl: meta.cover_url,
-            status: "plan_to_watch",
-            episodesWatched: 0,
-            episodeCount: meta.episode_count,
-            genres: meta.genres,
-            score: meta.anilist_score ?? undefined,
-            synopsis: meta.synopsis ?? undefined,
-            seasons: series.seasons,
-          });
-        } catch {
-          // Metadata fetch failed — save with basic info
-          const cleanedName = cleanTitleForSearch(series.name);
-          results.push({
-            name: cleanedName,
-            coverUrl: null,
-            status: "plan_to_watch",
-            episodesWatched: 0,
-            episodeCount: series.episode_files.length,
-            genres: [],
-            seasons: series.seasons,
-          });
-        }
-
-        setLibrary([...results]);
-        onSeriesCountChange(results.length);
-      }
-
-      setHasLibrary(true);
-
-      // Save the folder path to settings automatically
-      await invoke("save_setting", {
-        key: "library_folder",
-        value: folderPath,
+      // Build entries for the confirm modal
+      const entries: ScanEntry[] = discovered.map((series) => {
+        const cleaned = cleanTitleForSearch(series.name);
+        return {
+          originalName: series.name,
+          cleanedName: cleaned,
+          editedName: cleaned,
+          path: series.path,
+          episodeCount: series.episode_files.length,
+        };
       });
+
+      // Show confirm modal with discovered series
+      setPendingScan(entries);
     } catch (err) {
-      setError(`Error: ${err}`);
+      setError(`Scan error: ${err}`);
     } finally {
       setScanning(false);
-      setFetchingMetadata(false);
     }
   }
 
@@ -422,20 +458,20 @@ export default function LibraryPage({
               type="text"
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleScanAndFetch()}
-              placeholder="e.g. E:\Videos\Anime"
+              onKeyDown={(e) => e.key === "Enter" && handleScan()}
+              placeholder="e.g. C:\Videos\Anime"
               className="flex-1 bg-[#0e0e1a] border border-[#00d4ff]/15
                 rounded-md px-4 py-2.5 text-sm text-[#f0f4ff]
                 placeholder-[#445566] outline-none
                 focus:border-[#00d4ff]/40 transition-colors"
             />
             <button
-              onClick={handleScanAndFetch}
+              onClick={handleScan}
               disabled={scanning || fetchingMetadata}
               className="flex items-center gap-2 px-5 py-2.5 rounded-md
-                bg-[#00d4ff] text-[#050508] font-bold text-sm
-                hover:bg-[#00bfe8] transition-colors
-                disabled:opacity-50 disabled:cursor-not-allowed"
+    bg-[#00d4ff] text-[#050508] font-bold text-sm
+    hover:bg-[#00bfe8] transition-colors
+    disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderOpen size={15} />
               {scanning ? "Scanning..." : "Scan Library"}
@@ -485,11 +521,7 @@ export default function LibraryPage({
             <div className="flex items-center gap-2">
               {/* Rescan button */}
               <button
-                onClick={() => {
-                  setHasLibrary(false);
-                  setLibrary([]);
-                  onSeriesCountChange(0);
-                }}
+                onClick={handleRescan}
                 className="flex items-center gap-1.5 text-xs
                   text-[#445566] hover:text-[#00d4ff] transition-colors"
               >
@@ -601,6 +633,17 @@ export default function LibraryPage({
           <FolderOpen size={40} className="text-[#445566]" />
           <p className="text-[#445566] text-sm">No anime found</p>
         </div>
+      )}
+      {/* ── Scan Confirm Modal ── */}
+      {pendingScan && (
+        <ScanConfirmModal
+          entries={pendingScan}
+          onConfirm={handleConfirmAndFetch}
+          onCancel={() => {
+            setPendingScan(null);
+            setIsRescanning(false);
+          }}
+        />
       )}
     </div>
   );

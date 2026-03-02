@@ -78,6 +78,25 @@ export default function SeriesDetailPage({
     });
   }
 
+  const [currentStatus, setCurrentStatus] = useState(anime.status);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  async function handleStatusChange(newStatus: AnimeCardData["status"]) {
+    if (!anime.id || newStatus === currentStatus) return;
+    setUpdatingStatus(true);
+    try {
+      await invoke("update_series_status", {
+        seriesId: anime.id,
+        status: newStatus,
+      });
+      setCurrentStatus(newStatus);
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  }
+
   async function handlePlayEpisode(
     filePath: string,
     fileName: string,
