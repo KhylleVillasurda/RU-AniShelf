@@ -1,8 +1,6 @@
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
 
-/// Returns the path where the database file will be stored.
-/// On Windows this resolves to: C:\Users\<You>\AppData\Roaming\ru-anishelf\anishelf.db
 pub fn get_db_path() -> PathBuf {
     let mut path = dirs::data_dir().expect("Could not find app data directory");
     path.push("ru-anishelf");
@@ -10,13 +8,9 @@ pub fn get_db_path() -> PathBuf {
     path
 }
 
-/// Creates the database file and all tables if they don't exist yet.
-/// Safe to call every time the app starts — IF NOT EXISTS means it
-/// won't wipe your data on restart.
 pub fn initialize_db() -> Result<Connection> {
     let db_path = get_db_path();
 
-    // Create the folder if it doesn't exist yet
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).expect("Failed to create app data directory");
     }
@@ -72,10 +66,14 @@ pub fn initialize_db() -> Result<Connection> {
 
         CREATE TABLE IF NOT EXISTS watch_history (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            series_id       INTEGER NOT NULL,
+            series_name     TEXT NOT NULL,
+            series_path     TEXT NOT NULL,
+            cover_url       TEXT,
+            episode_name    TEXT NOT NULL,
+            episode_path    TEXT NOT NULL,
             episode_number  INTEGER NOT NULL,
-            watched_at      TEXT NOT NULL,
-            FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE
+            season_name     TEXT NOT NULL,
+            watched_at      TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS settings (
@@ -86,4 +84,77 @@ pub fn initialize_db() -> Result<Connection> {
     )?;
 
     Ok(conn)
+}
+
+/// Saves a watch event to the history table
+pub fn save_watch_event(
+    conn: &Connection,
+    series_name: &str,
+    series_path: &str,
+    cover_url: Option<&str>,
+    episode_name: &str,
+    episode_path: &str,
+    episode_number: i32,
+    season_name: &str,
+) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO watch_history
+            (series_name, series_path, cover_url, episode_name,
+             episode_path, episode_number, season_name, watched_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            series_name,
+            series_path,
+            cover_url,
+            episode_name,
+            episode_path,
+            episode_number,
+            season_name,
+            now
+        ],
+    )?;
+    Ok(())
+}
+
+/// Returns the most recent watch events
+pub fn get_watch_history(conn: &Connection, limit: i32) -> Result<Vec<WatchEvent>> {
+    let mut stmt = conn.prepare(
+        "SELECT series_name, series_path, cover_url, episode_name,
+                episode_path, episode_number, season_name, watched_at
+         FROM watch_history
+         ORDER BY watched_at DESC
+         LIMIT ?1",
+    )?;
+
+    let events = stmt
+        .query_map([limit], |row| {
+            Ok(WatchEvent {
+                series_name: row.get(0)?,
+                series_path: row.get(1)?,
+                cover_url: row.get(2)?,
+                episode_name: row.get(3)?,
+                episode_path: row.get(4)?,
+                episode_number: row.get(5)?,
+                season_name: row.get(6)?,
+                watched_at: row.get(7)?,
+            })
+        })?
+        .flatten()
+        .collect();
+
+    Ok(events)
+}
+
+/// Struct representing a single watch history entry
+#[derive(Debug)]
+pub struct WatchEvent {
+    pub series_name: String,
+    pub series_path: String,
+    pub cover_url: Option<String>,
+    pub episode_name: String,
+    pub episode_path: String,
+    pub episode_number: i32,
+    pub season_name: String,
+    pub watched_at: String,
 }

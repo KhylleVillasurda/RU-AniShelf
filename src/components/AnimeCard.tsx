@@ -15,8 +15,19 @@ export interface AnimeCardData {
   episodeCount: number | null;
   genres: string[];
   score?: number;
-  synopsis?: string; // ← add
+  synopsis?: string;
   seasons?: SeasonData[];
+}
+
+export interface SeasonData {
+  season_name: string;
+  path: string;
+  episode_files: EpisodeFileData[];
+}
+
+export interface EpisodeFileData {
+  file_name: string;
+  file_path: string;
 }
 
 interface AnimeCardProps {

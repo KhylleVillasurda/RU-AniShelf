@@ -213,7 +213,7 @@ export default function LibraryPage({
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleScanAndFetch()}
-              placeholder="e.g. E:\Videos\Anime"
+              placeholder="e.g. E:\Folder\To\Anime"
               className="flex-1 bg-[#0e0e1a] border border-[#00d4ff]/15
                 rounded-md px-4 py-2.5 text-sm text-[#f0f4ff]
                 placeholder-[#445566] outline-none

@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import LibraryPage from "./pages/LibraryPage";
 import SeriesDetailPage from "./pages/SeriesDetailPage";
 import { AnimeCardData } from "./components/AnimeCard";
+import HistoryPage from "./pages/HistoryPage";
 
 type StatusFilter =
   | "all"
@@ -71,6 +72,10 @@ export default function App() {
           onSelectAnime={handleSelectAnime}
         />
       );
+    }
+
+    if (activePage === "history") {
+      return <HistoryPage />;
     }
 
     return (

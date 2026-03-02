@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { AnimeCardData } from "../components/AnimeCard";
+import {
+  AnimeCardData,
+  SeasonData,
+  EpisodeFileData,
+} from "../components/AnimeCard";
 import {
   ArrowLeft,
   Play,
@@ -74,11 +78,28 @@ export default function SeriesDetailPage({
     });
   }
 
-  async function handlePlayEpisode(filePath: string, fileName: string) {
+  async function handlePlayEpisode(
+    filePath: string,
+    fileName: string,
+    episodeNumber: number,
+    seasonName: string,
+  ) {
     setOpeningFile(fileName);
     setOpenError("");
     try {
+      // Open the file in external player
       await invoke("open_episode", { filePath });
+
+      // Log to watch history
+      await invoke("log_watch_event", {
+        seriesName: anime.name,
+        seriesPath: anime.seasons?.[0]?.path ?? "",
+        coverUrl: anime.coverUrl,
+        episodeName: fileName,
+        episodePath: filePath,
+        episodeNumber,
+        seasonName,
+      });
     } catch (err) {
       setOpenError(`Could not open file: ${err}`);
     } finally {
@@ -257,74 +278,81 @@ export default function SeriesDetailPage({
                 {/* Episode list */}
                 {isExpanded && (
                   <div className="border-t border-[#00d4ff]/10">
-                    {season.episode_files.map((ep, i) => {
-                      const isOpening = openingFile === ep.file_name;
-                      return (
-                        <button
-                          key={i}
-                          onClick={() =>
-                            handlePlayEpisode(ep.file_path, ep.file_name)
-                          }
-                          disabled={!!openingFile}
-                          className="w-full flex items-center gap-3 px-4 py-2.5
+                    {season.episode_files.map(
+                      (ep: EpisodeFileData, i: number) => {
+                        const isOpening = openingFile === ep.file_name;
+                        return (
+                          <button
+                            key={i}
+                            onClick={() =>
+                              handlePlayEpisode(
+                                ep.file_path,
+                                ep.file_name,
+                                i + 1,
+                                season.season_name,
+                              )
+                            }
+                            disabled={!!openingFile}
+                            className="w-full flex items-center gap-3 px-4 py-2.5
                             border-b border-[#00d4ff]/05 last:border-0
                             hover:bg-[#1c1c30] transition-colors
                             disabled:opacity-50 disabled:cursor-not-allowed
                             group text-left"
-                        >
-                          {/* Episode number */}
-                          <span
-                            className="text-xs text-[#445566] w-6
-                            flex-shrink-0 text-right"
                           >
-                            {i + 1}
-                          </span>
+                            {/* Episode number */}
+                            <span
+                              className="text-xs text-[#445566] w-6
+                            flex-shrink-0 text-right"
+                            >
+                              {i + 1}
+                            </span>
 
-                          {/* Play icon */}
-                          <div
-                            className="w-6 h-6 rounded-full flex items-center
+                            {/* Play icon */}
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center
                             justify-center bg-[#13131f] border border-[#00d4ff]/10
                             group-hover:border-[#00d4ff]/40
                             group-hover:bg-[#00d4ff]/10
                             transition-all flex-shrink-0"
-                          >
-                            {isOpening ? (
-                              <Loader2
-                                size={10}
-                                className="animate-spin text-[#00d4ff]"
-                              />
-                            ) : (
-                              <Play
-                                size={9}
-                                className="text-[#445566]
+                            >
+                              {isOpening ? (
+                                <Loader2
+                                  size={10}
+                                  className="animate-spin text-[#00d4ff]"
+                                />
+                              ) : (
+                                <Play
+                                  size={9}
+                                  className="text-[#445566]
                                   group-hover:text-[#00d4ff] transition-colors
                                   ml-0.5"
-                              />
-                            )}
-                          </div>
+                                />
+                              )}
+                            </div>
 
-                          {/* Episode name */}
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span
-                              className="text-xs text-[#8899bb]
+                            {/* Episode name */}
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span
+                                className="text-xs text-[#8899bb]
                               group-hover:text-[#f0f4ff] transition-colors
                               truncate"
-                            >
-                              {cleanEpisodeName(ep.file_name)}
-                            </span>
-                            <span className="text-[10px] text-[#445566] truncate">
-                              {ep.file_name}
-                            </span>
-                          </div>
+                              >
+                                {cleanEpisodeName(ep.file_name)}
+                              </span>
+                              <span className="text-[10px] text-[#445566] truncate">
+                                {ep.file_name}
+                              </span>
+                            </div>
 
-                          {/* File icon */}
-                          <FileVideo
-                            size={12}
-                            className="text-[#445566] flex-shrink-0"
-                          />
-                        </button>
-                      );
-                    })}
+                            {/* File icon */}
+                            <FileVideo
+                              size={12}
+                              className="text-[#445566] flex-shrink-0"
+                            />
+                          </button>
+                        );
+                      },
+                    )}
                   </div>
                 )}
               </div>
