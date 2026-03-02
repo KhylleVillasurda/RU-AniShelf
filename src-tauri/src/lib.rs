@@ -15,10 +15,31 @@ async fn fetch_metadata(title: String) -> Result<metadata::SeriesMetadata, Strin
 }
 
 #[tauri::command]
-async fn open_episode(file_path: String) -> Result<(), String> {
-    // opener::open uses the OS default handler for the file type
-    // On Windows .mkv/.mp4 files open in whatever the default video player is
-    opener::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))
+async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Result<(), String> {
+    // Check if user has configured a custom player
+    let player_path = {
+        let conn = state
+            .0
+            .lock()
+            .map_err(|e| format!("DB lock error: {}", e))?;
+        db::get_setting(&conn, "player_path").map_err(|e| format!("DB error: {}", e))?
+    };
+
+    match player_path {
+        Some(player) if !player.is_empty() => {
+            // Launch with configured player
+            std::process::Command::new(&player)
+                .arg(&file_path)
+                .spawn()
+                .map_err(|e| format!("Failed to launch player: {}", e))?;
+        }
+        _ => {
+            // Fall back to OS default
+            opener::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +57,10 @@ pub fn run() {
             open_episode,
             log_watch_event,
             get_history,
+            save_setting,
+            get_setting,
+            get_all_settings,
+            clear_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -90,6 +115,57 @@ fn get_history(state: tauri::State<DbState>, limit: i32) -> Result<Vec<WatchEven
             watched_at: e.watched_at,
         })
         .collect())
+}
+
+#[tauri::command]
+fn save_setting(state: tauri::State<DbState>, key: String, value: String) -> Result<(), String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    db::save_setting(&conn, &key, &value).map_err(|e| format!("DB error: {}", e))
+}
+
+#[tauri::command]
+fn get_setting(state: tauri::State<DbState>, key: String) -> Result<Option<String>, String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    db::get_setting(&conn, &key).map_err(|e| format!("DB error: {}", e))
+}
+
+#[tauri::command]
+fn get_all_settings(
+    state: tauri::State<DbState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM settings")
+        .map_err(|e| format!("DB error: {}", e))?;
+
+    let map = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("DB error: {}", e))?
+        .flatten()
+        .collect();
+
+    Ok(map)
+}
+
+#[tauri::command]
+fn clear_history(state: tauri::State<DbState>) -> Result<(), String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    db::clear_watch_history(&conn).map_err(|e| format!("DB error: {}", e))
 }
 
 #[derive(serde::Serialize)]

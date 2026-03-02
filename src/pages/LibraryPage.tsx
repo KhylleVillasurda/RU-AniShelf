@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import AnimeCard, { AnimeCardData } from "../components/AnimeCard";
 import { FolderOpen, Loader2, ChevronDown } from "lucide-react";
@@ -78,6 +78,22 @@ export default function LibraryPage({
   const [sortBy, setSortBy] = useState<SortOption>("title_asc");
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
+
+  useEffect(() => {
+    async function loadSavedFolder() {
+      try {
+        const saved = await invoke<string | null>("get_setting", {
+          key: "library_folder",
+        });
+        if (saved && saved.trim()) {
+          setFolderPath(saved);
+        }
+      } catch {
+        // silently ignore — settings just won't be pre-filled
+      }
+    }
+    loadSavedFolder();
+  }, []);
 
   // Collect all unique genres across the library dynamically
   const allGenres = useMemo(() => {

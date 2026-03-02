@@ -158,3 +158,31 @@ pub struct WatchEvent {
     pub season_name: String,
     pub watched_at: String,
 }
+
+// Saves a key-value setting to the settings table
+pub fn save_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    )?;
+    Ok(())
+}
+
+// Reads a setting by key, returns None if not found
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+
+    let result = stmt.query_row([key], |row| row.get(0));
+
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn clear_watch_history(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM watch_history", [])?;
+    Ok(())
+}
