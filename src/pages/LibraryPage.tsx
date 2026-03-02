@@ -1,12 +1,19 @@
 import { useState, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import AnimeCard, { AnimeCardData } from "../components/AnimeCard";
+import AnimeCard, { AnimeCardData, SeasonData } from "../components/AnimeCard";
 import { FolderOpen, Loader2, ChevronDown, RefreshCw } from "lucide-react";
 
 interface EpisodeFile {
   file_name: string;
   file_path: string;
+}
+
+interface EpisodeDto {
+  episode_number: number;
+  file_path: string;
+  file_name: string;
+  season_name: string;
 }
 
 interface Season {
@@ -49,6 +56,7 @@ interface SeriesDto {
   anilist_id: number | null;
   anilist_score: number | null;
   genres: string[];
+  episodes: EpisodeDto[];
 }
 
 type SortOption = "title_asc" | "title_desc" | "score_desc" | "episodes_desc";
@@ -100,6 +108,29 @@ function localCoverUrl(path: string | null): string | null {
 // Maps a SeriesDto from SQLite into an AnimeCardData for the UI
 function dtoToCardData(dto: SeriesDto): AnimeCardData {
   const coverUrl = localCoverUrl(dto.cover_local_path) ?? dto.cover_remote_url;
+
+  // Group flat episode list back into seasons
+  const seasonMap = new Map<string, SeasonData>();
+
+  for (const ep of dto.episodes) {
+    if (!seasonMap.has(ep.season_name)) {
+      seasonMap.set(ep.season_name, {
+        season_name: ep.season_name,
+        path: dto.local_path,
+        episode_files: [],
+      });
+    }
+    seasonMap.get(ep.season_name)!.episode_files.push({
+      file_name: ep.file_name,
+      file_path: ep.file_path,
+    });
+  }
+
+  // Sort seasons naturally
+  const seasons = Array.from(seasonMap.values()).sort((a, b) =>
+    a.season_name.localeCompare(b.season_name, undefined, { numeric: true }),
+  );
+
   return {
     id: dto.id,
     name: dto.title,
@@ -110,6 +141,7 @@ function dtoToCardData(dto: SeriesDto): AnimeCardData {
     genres: dto.genres,
     score: dto.anilist_score ?? undefined,
     synopsis: dto.synopsis ?? undefined,
+    seasons, // ← now populated from DB
   };
 }
 
@@ -244,6 +276,19 @@ export default function LibraryPage({
             title: cleanedTitle,
           });
 
+          const allEpisodes: [number, string, string, string][] = [];
+          let epNumber = 1;
+          for (const season of series.seasons) {
+            for (const ep of season.episode_files) {
+              allEpisodes.push([
+                epNumber++,
+                ep.file_path,
+                ep.file_name,
+                season.season_name,
+              ]);
+            }
+          }
+
           // Save to SQLite — this also downloads cover art locally
           const savedId = await invoke<number>("save_series_to_library", {
             title: meta.title,
@@ -256,6 +301,7 @@ export default function LibraryPage({
             anilistId: meta.anilist_id,
             anilistScore: meta.anilist_score,
             genres: meta.genres,
+            episodes: allEpisodes,
           });
 
           results.push({

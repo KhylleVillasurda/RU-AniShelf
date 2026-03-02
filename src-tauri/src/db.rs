@@ -46,10 +46,11 @@ pub fn initialize_db() -> Result<Connection> {
             episode_number  INTEGER NOT NULL,
             file_path       TEXT NOT NULL,
             file_name       TEXT,
+            season_name     TEXT NOT NULL DEFAULT 'Season 1',
             watched         INTEGER NOT NULL DEFAULT 0,
             watched_at      TEXT,
             FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE
-        );
+);
 
         CREATE TABLE IF NOT EXISTS genres (
             id    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -300,6 +301,51 @@ pub fn update_series_status(conn: &Connection, series_id: i64, status: &str) -> 
     Ok(())
 }
 
+/// Saves episode files for a series — clears old ones first
+pub fn save_episodes(
+    conn: &Connection,
+    series_id: i64,
+    episodes: &[(i32, &str, &str, &str)], // (number, file_path, file_name, season_name)
+) -> Result<()> {
+    // Clear existing episodes for this series
+    conn.execute("DELETE FROM episodes WHERE series_id = ?1", [series_id])?;
+
+    for (episode_number, file_path, file_name, season_name) in episodes {
+        conn.execute(
+            "INSERT INTO episodes
+                (series_id, episode_number, file_path, file_name, season_name)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![series_id, episode_number, file_path, file_name, season_name],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Loads all episodes for a series grouped by season
+pub fn get_episodes(conn: &Connection, series_id: i64) -> Result<Vec<EpisodeRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT episode_number, file_path, file_name, season_name
+         FROM episodes
+         WHERE series_id = ?1
+         ORDER BY season_name ASC, episode_number ASC",
+    )?;
+
+    let episodes = stmt
+        .query_map([series_id], |row| {
+            Ok(EpisodeRecord {
+                episode_number: row.get(0)?,
+                file_path: row.get(1)?,
+                file_name: row.get(2)?,
+                season_name: row.get(3)?,
+            })
+        })?
+        .flatten()
+        .collect();
+
+    Ok(episodes)
+}
+
 #[derive(Debug)]
 pub struct SeriesRecord {
     pub id: i64,
@@ -329,6 +375,14 @@ pub struct WatchEvent {
     pub episode_number: i32,
     pub season_name: String,
     pub watched_at: String,
+}
+
+#[derive(Debug)]
+pub struct EpisodeRecord {
+    pub episode_number: i32,
+    pub file_path: String,
+    pub file_name: String,
+    pub season_name: String,
 }
 
 //============================================================ SETTINGS FUNCTIONS ============================================================

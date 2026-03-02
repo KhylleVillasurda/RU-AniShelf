@@ -184,16 +184,29 @@ struct WatchEventDto {
 }
 
 #[tauri::command]
-fn get_library(state: tauri::State<DbState>) -> Result<Vec<SeriesDto>, String> {
+async fn get_library(state: tauri::State<'_, DbState>) -> Result<Vec<SeriesDto>, String> {
     let conn = state
         .0
         .lock()
         .map_err(|e| format!("DB lock error: {}", e))?;
     let series = db::get_all_series(&conn).map_err(|e| format!("DB error: {}", e))?;
 
-    Ok(series
-        .into_iter()
-        .map(|s| SeriesDto {
+    let mut result = Vec::new();
+
+    for s in series {
+        // Load episodes for each series
+        let episodes = db::get_episodes(&conn, s.id)
+            .map_err(|e| format!("DB error: {}", e))?
+            .into_iter()
+            .map(|e| EpisodeDto {
+                episode_number: e.episode_number,
+                file_path: e.file_path,
+                file_name: e.file_name,
+                season_name: e.season_name,
+            })
+            .collect();
+
+        result.push(SeriesDto {
             id: s.id,
             title: s.title,
             title_english: s.title_english,
@@ -207,21 +220,11 @@ fn get_library(state: tauri::State<DbState>) -> Result<Vec<SeriesDto>, String> {
             anilist_id: s.anilist_id,
             anilist_score: s.anilist_score,
             genres: s.genres,
-        })
-        .collect())
-}
+            episodes,
+        });
+    }
 
-#[tauri::command]
-fn update_series_status(
-    state: tauri::State<DbState>,
-    series_id: i64,
-    status: String,
-) -> Result<(), String> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|e| format!("DB lock error: {}", e))?;
-    db::update_series_status(&conn, series_id, &status).map_err(|e| format!("DB error: {}", e))
+    Ok(result)
 }
 
 #[tauri::command]
@@ -237,12 +240,13 @@ async fn save_series_to_library(
     anilist_id: Option<i64>,
     anilist_score: Option<f64>,
     genres: Vec<String>,
+    // Each episode: [episode_number, file_path, file_name, season_name]
+    episodes: Vec<(i32, String, String, String)>,
 ) -> Result<i64, String> {
-    // Download cover art locally if available
     let cover_local_path = if let Some(ref url) = cover_remote_url {
         match metadata::download_cover(url, &title).await {
             Ok(path) => Some(path),
-            Err(_) => None, // silently fall back to remote url
+            Err(_) => None,
         }
     } else {
         None
@@ -253,7 +257,7 @@ async fn save_series_to_library(
         .lock()
         .map_err(|e| format!("DB lock error: {}", e))?;
 
-    db::upsert_series(
+    let series_id = db::upsert_series(
         &conn,
         &title,
         title_english.as_deref(),
@@ -268,9 +272,31 @@ async fn save_series_to_library(
         anilist_score,
         &genres,
     )
-    .map_err(|e| format!("DB error: {}", e))
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    // Save episodes
+    let episode_refs: Vec<(i32, &str, &str, &str)> = episodes
+        .iter()
+        .map(|(n, fp, fn_, sn)| (*n, fp.as_str(), fn_.as_str(), sn.as_str()))
+        .collect();
+
+    db::save_episodes(&conn, series_id, &episode_refs).map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(series_id)
 }
 
+#[tauri::command]
+async fn update_series_status(
+    state: tauri::State<'_, DbState>,
+    series_id: i64,
+    status: String,
+) -> Result<(), String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    db::update_series_status(&conn, series_id, &status).map_err(|e| format!("DB error: {}", e))
+}
 #[derive(serde::Serialize)]
 struct SeriesDto {
     id: i64,
@@ -286,4 +312,13 @@ struct SeriesDto {
     anilist_id: Option<i64>,
     anilist_score: Option<f64>,
     genres: Vec<String>,
+    episodes: Vec<EpisodeDto>,
+}
+
+#[derive(serde::Serialize)]
+struct EpisodeDto {
+    episode_number: i32,
+    file_path: String,
+    file_name: String,
+    season_name: String,
 }
