@@ -301,6 +301,28 @@ export default function LibraryPage({
     return result;
   }, [library, searchQuery, statusFilter, activeGenre, sortBy]);
 
+  async function fetchWithRetry(
+    title: string,
+    retries = 3,
+  ): Promise<SeriesMetadata> {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const meta = await invoke<SeriesMetadata>("fetch_metadata", { title });
+        return meta;
+      } catch (err) {
+        const isLastAttempt = attempt === retries - 1;
+        if (isLastAttempt) throw err;
+        // Always retry — could be rate limit disguised as "no results"
+        const waitMs = 3000 * (attempt + 1);
+        console.log(
+          `⏳ Retrying "${title}" in ${waitMs}ms (attempt ${attempt + 1})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+    throw new Error(`Failed after ${retries} attempts`);
+  }
+
   async function handleConfirmAndFetch(confirmedEntries: ScanEntry[]) {
     setPendingScan(null);
     setFetchingMetadata(true);
@@ -316,15 +338,34 @@ export default function LibraryPage({
 
     for (let i = 0; i < confirmedEntries.length; i++) {
       const entry = confirmedEntries[i];
-      const series = discovered.find((d) => d.path === entry.path);
+      const series = discovered.find(
+        (d) =>
+          d.path.toLowerCase().replace(/\\/g, "/").trim() ===
+          entry.path.toLowerCase().replace(/\\/g, "/").trim(),
+      );
       setProgress({ current: i + 1, total: confirmedEntries.length });
 
-      if (!series) continue;
+      if (!series) {
+        console.warn("No matching series found for path:", entry.path);
+        console.log(
+          "Available paths:",
+          discovered.map((d) => d.path),
+        );
+        continue;
+      }
+
+      console.log(`Fetching [${i + 1}/${confirmedEntries.length}]:`, {
+        original: entry.originalName,
+        edited: entry.editedName,
+      });
 
       try {
         const meta = await invoke<SeriesMetadata>("fetch_metadata", {
           title: entry.editedName, // ← use user's confirmed/edited title
         });
+        console.log("✅ Got metadata:", meta.title);
+
+        await new Promise((resolve) => setTimeout(resolve, 2500));
 
         const allEpisodes: [number, string, string, string][] = [];
         let epNumber = 1;
@@ -366,7 +407,13 @@ export default function LibraryPage({
           synopsis: meta.synopsis ?? undefined,
           seasons: series.seasons,
         });
-      } catch {
+      } catch (err) {
+        console.error(
+          "❌ Metadata failed for:",
+          entry.editedName,
+          "Error:",
+          err,
+        );
         const cleanedName = cleanTitleForSearch(series.name);
         results.push({
           name: cleanedName,

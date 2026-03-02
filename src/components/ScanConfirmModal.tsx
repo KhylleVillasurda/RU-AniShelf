@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Pencil, Check, X, Search, FolderOpen } from "lucide-react";
 
 interface ScanEntry {
@@ -23,8 +23,13 @@ export default function ScanConfirmModal({
   onCancel,
 }: ScanConfirmModalProps) {
   const [items, setItems] = useState<ScanEntry[]>(entries);
+  const itemsRef = useRef<ScanEntry[]>(entries);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   function startEdit(index: number) {
     setEditingIndex(index);
@@ -32,13 +37,13 @@ export default function ScanConfirmModal({
   }
 
   function confirmEdit(index: number) {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === index
-          ? { ...item, editedName: editValue.trim() || item.cleanedName }
-          : item,
-      ),
+    const updated = items.map((item, i) =>
+      i === index
+        ? { ...item, editedName: editValue.trim() || item.cleanedName }
+        : item,
     );
+    itemsRef.current = updated;
+    setItems(updated);
     setEditingIndex(null);
   }
 
@@ -191,7 +196,17 @@ export default function ScanConfirmModal({
               Cancel
             </button>
             <button
-              onClick={() => onConfirm(items)}
+              onClick={() => {
+                const finalItems = itemsRef.current.map((item, i) =>
+                  i === editingIndex
+                    ? {
+                        ...item,
+                        editedName: editValue.trim() || item.cleanedName,
+                      }
+                    : item,
+                );
+                onConfirm(finalItems);
+              }}
               className="flex items-center gap-2 px-5 py-2 rounded-md
                 bg-[#00d4ff] text-[#050508] font-bold text-sm
                 hover:bg-[#00bfe8] transition-colors"

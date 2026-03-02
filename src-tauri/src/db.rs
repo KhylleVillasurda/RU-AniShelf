@@ -203,25 +203,34 @@ pub fn upsert_series(
         ],
     )?;
 
-    let series_id = conn.last_insert_rowid();
+    let series_id: i64 = if let Some(aid) = anilist_id {
+        conn.query_row(
+            "SELECT id FROM series WHERE anilist_id = ?1",
+            [aid],
+            |row| row.get(0),
+        )?
+    } else {
+        conn.query_row(
+            "SELECT id FROM series WHERE local_path = ?1",
+            [local_path],
+            |row| row.get(0),
+        )?
+    };
 
-    // Save genres — clear old ones first then reinsert
+    // Clear and reinsert genres
     conn.execute(
         "DELETE FROM series_genres WHERE series_id = ?1",
         [series_id],
     )?;
 
     for genre in genres {
-        // Insert genre if not exists
         conn.execute("INSERT OR IGNORE INTO genres (name) VALUES (?1)", [genre])?;
 
-        // Get genre id
         let genre_id: i64 =
             conn.query_row("SELECT id FROM genres WHERE name = ?1", [genre], |row| {
                 row.get(0)
             })?;
 
-        // Link to series
         conn.execute(
             "INSERT OR IGNORE INTO series_genres (series_id, genre_id)
              VALUES (?1, ?2)",
