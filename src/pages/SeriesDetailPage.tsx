@@ -21,6 +21,12 @@ interface SeriesDetailPageProps {
   onStatusUpdate?: (id: number, status: AnimeCardData["status"]) => void;
 }
 
+interface StatusDropdownProps {
+  currentStatus: AnimeCardData["status"];
+  onStatusChange: (status: AnimeCardData["status"]) => void;
+  disabled: boolean;
+}
+
 const STATUS_CONFIG = {
   watching: {
     label: "Watching",
@@ -51,6 +57,85 @@ const STATUS_CONFIG = {
     icon: <BookmarkPlus size={11} />,
   },
 };
+
+function StatusDropdown({
+  currentStatus,
+  onStatusChange,
+  disabled,
+}: StatusDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const config = STATUS_CONFIG[currentStatus];
+
+  return (
+    <div className="relative">
+      {/* Trigger button */}
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        disabled={disabled}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md
+          border text-[11px] font-bold tracking-wide uppercase
+          transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          color: config.color,
+          background: config.bg,
+          borderColor: config.border,
+        }}
+      >
+        {config.icon}
+        {config.label}
+        <ChevronDown
+          size={11}
+          className={`transition-transform
+          duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {/* Dropdown menu */}
+      {open && (
+        <>
+          {/* Click outside to close */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            className="absolute left-0 top-full mt-1 z-50
+            bg-[#13131f] border border-[#00d4ff]/15 rounded-md
+            overflow-hidden shadow-xl min-w-[160px]"
+          >
+            {(
+              Object.keys(STATUS_CONFIG) as Array<keyof typeof STATUS_CONFIG>
+            ).map((statusKey) => {
+              const opt = STATUS_CONFIG[statusKey];
+              const isActive = currentStatus === statusKey;
+              return (
+                <button
+                  key={statusKey}
+                  onClick={() => {
+                    onStatusChange(statusKey as AnimeCardData["status"]);
+                    setOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5
+                      text-[11px] font-bold tracking-wide uppercase
+                      transition-colors text-left"
+                  style={{
+                    color: isActive ? opt.color : "#667799",
+                    background: isActive ? opt.bg : "transparent",
+                  }}
+                >
+                  {opt.icon}
+                  {opt.label}
+                  {isActive && (
+                    <span className="ml-auto">
+                      <CheckCircle size={11} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function SeriesDetailPage({
   anime,
@@ -177,70 +262,36 @@ export default function SeriesDetailPage({
 
           {/* Stats row */}
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Status badge */}
-            {/* Interactive status selector */}
-            <div className="flex flex-col gap-1.5">
-              <span
-                className="text-[10px] font-bold tracking-[0.15em]
-    uppercase text-[#445566]"
-              >
-                Status
-              </span>
-              <div className="flex gap-2 flex-wrap">
-                {(
-                  Object.keys(STATUS_CONFIG) as Array<
-                    keyof typeof STATUS_CONFIG
-                  >
-                ).map((statusKey) => {
-                  const config = STATUS_CONFIG[statusKey];
-                  const isActive = currentStatus === statusKey;
-                  return (
-                    <button
-                      key={statusKey}
-                      onClick={() =>
-                        handleStatusChange(statusKey as AnimeCardData["status"])
-                      }
-                      disabled={updatingStatus}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded
-              text-[11px] font-bold tracking-wide uppercase border
-              transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{
-                        color: isActive ? config.color : "#445566",
-                        background: isActive ? config.bg : "transparent",
-                        borderColor: isActive
-                          ? config.border
-                          : "rgba(100,120,150,0.2)",
-                      }}
-                    >
-                      {config.icon}
-                      {config.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             {/* Score */}
             {anime.score && (
               <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded
-                bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
+      bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
               >
                 <Star size={11} className="text-[#ffaa00]" />
-                {anime.score} / 10
+                <span>{anime.score}</span>
+                <span className="text-[#445566]">/ 10</span>
               </div>
             )}
 
             {/* Episode count */}
             {anime.episodeCount && (
               <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded
-                bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
+      bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
               >
                 <Tv size={11} />
-                {anime.episodeCount} episodes
+                <span>{anime.episodeCount}</span>
+                <span className="text-[#445566]">episodes</span>
               </div>
             )}
+
+            {/* Status dropdown */}
+            <StatusDropdown
+              currentStatus={currentStatus}
+              onStatusChange={handleStatusChange}
+              disabled={updatingStatus}
+            />
           </div>
 
           {/* Genres */}
