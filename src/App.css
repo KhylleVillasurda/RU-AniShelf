@@ -1,1 +1,54 @@
 @import "tailwindcss";
+@import "overlayscrollbars/overlayscrollbars.css";
+
+/* Smooth scrolling globally */
+* {
+  scroll-behavior: smooth;
+  box-sizing: border-box;
+}
+
+/* Custom scrollbar — thinner and styled to match theme */
+::-webkit-scrollbar {
+  display: none;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.2);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.4);
+}
+
+/* Prevent layout shift from scrollbar appearing */
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+/* GPU acceleration for smoother rendering */
+.scroll-container {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ── OverlayScrollbars theme to match RU: AniShelf ── */
+.os-theme-dark.os-scrollbar {
+  --os-size: 6px;
+  --os-padding-perpendicular: 0px;
+  --os-padding-axis: 0px;
+  --os-track-border-radius: 999px;
+  --os-track-bg: transparent;
+  --os-track-bg-hover: transparent;
+  --os-track-bg-active: transparent;
+  --os-handle-border-radius: 999px;
+  --os-handle-bg: rgba(0, 212, 255, 0.2);
+  --os-handle-bg-hover: rgba(0, 212, 255, 0.5);
+  --os-handle-bg-active: rgba(0, 212, 255, 0.7);
+  --os-handle-min-size: 40px;
+}

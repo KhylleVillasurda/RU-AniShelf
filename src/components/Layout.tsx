@@ -1,5 +1,7 @@
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
+import "overlayscrollbars/overlayscrollbars.css";
 
 interface LayoutProps {
   activePage: string;
@@ -33,7 +35,26 @@ export default function Layout({
           searchQuery={searchQuery}
           onSearchChange={onSearchChange}
         />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        {/* OverlayScrollbars replaces the native scroll container */}
+        <OverlayScrollbarsComponent
+          element="main"
+          style={{ flex: 1, padding: "24px" }}
+          options={{
+            scrollbars: {
+              theme: "os-theme-dark",
+              autoHide: "scroll",
+              autoHideDelay: 800,
+              visibility: "auto",
+            },
+            overflow: {
+              x: "hidden",
+              y: "scroll",
+            },
+          }}
+          defer
+        >
+          {children}
+        </OverlayScrollbarsComponent>
       </div>
     </div>
   );

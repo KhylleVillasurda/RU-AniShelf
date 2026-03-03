@@ -81,11 +81,12 @@ export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
   return (
     <div
       onClick={onClick}
+      style={{ contain: "layout style paint" }}
       className="group relative flex flex-col bg-[#16162a] rounded-md
-        border border-[#00d4ff]/10 overflow-hidden cursor-pointer
-        transition-all duration-200
-        hover:-translate-y-1 hover:border-[#00d4ff]/30
-        hover:shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_0_1px_rgba(0,212,255,0.1)]"
+          border border-[#00d4ff]/10 overflow-hidden cursor-pointer
+          transition-all duration-200
+          hover:-translate-y-1 hover:border-[#00d4ff]/30
+          hover:shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_0_1px_rgba(0,212,255,0.1)]"
     >
       {/* ── Poster ── */}
       <div className="relative w-full aspect-[2/3] overflow-hidden bg-[#0e0e1a]">

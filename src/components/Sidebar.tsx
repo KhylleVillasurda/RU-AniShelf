@@ -1,3 +1,5 @@
+import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
+import "overlayscrollbars/overlayscrollbars.css";
 import {
   LayoutGrid,
   History,
@@ -86,7 +88,22 @@ export default function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-2 overflow-y-auto">
+      <OverlayScrollbarsComponent
+        element="nav"
+        className="flex-1 py-2"
+        options={{
+          scrollbars: {
+            theme: "os-theme-dark",
+            autoHide: "scroll",
+            autoHideDelay: 800,
+          },
+          overflow: {
+            x: "hidden",
+            y: "scroll",
+          },
+        }}
+        defer
+      >
         <NavSection label="Navigate" />
         <NavItem
           icon={<LayoutGrid size={15} />}
@@ -148,7 +165,7 @@ export default function Sidebar({
           activePage={activePage}
           onNavigate={onNavigate}
         />
-      </nav>
+      </OverlayScrollbarsComponent>
 
       {/* Bottom stats */}
       <div className="px-5 py-4 border-t border-[#00d4ff]/10">

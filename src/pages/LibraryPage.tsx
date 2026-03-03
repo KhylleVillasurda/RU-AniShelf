@@ -668,6 +668,7 @@ export default function LibraryPage({
           className="grid gap-4"
           style={{
             gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+            contain: "layout style",
           }}
         >
           {filtered.map((anime, i) => (
