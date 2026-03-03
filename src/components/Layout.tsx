@@ -2,6 +2,7 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import "overlayscrollbars/overlayscrollbars.css";
+import { useTheme } from "../contexts/ThemeContext";
 
 interface LayoutProps {
   activePage: string;
@@ -22,8 +23,16 @@ export default function Layout({
   pageTitle,
   children,
 }: LayoutProps) {
+  const { theme } = useTheme();
   return (
-    <div className="flex h-screen w-screen bg-[#050508] overflow-hidden">
+    <div
+      className="flex h-screen w-screen bg-[#050508] overflow-hidden"
+      style={{
+        background: theme.bgBase,
+        color: theme.textPrimary,
+        fontFamily: theme.fontBody,
+      }}
+    >
       <Sidebar
         activePage={activePage}
         onNavigate={onNavigate}
@@ -38,18 +47,18 @@ export default function Layout({
         {/* OverlayScrollbars replaces the native scroll container */}
         <OverlayScrollbarsComponent
           element="main"
-          style={{ flex: 1, padding: "24px" }}
+          style={{
+            flex: 1,
+            padding: "24px",
+            background: theme.bgBase,
+          }}
           options={{
             scrollbars: {
               theme: "os-theme-dark",
               autoHide: "scroll",
               autoHideDelay: 800,
-              visibility: "auto",
             },
-            overflow: {
-              x: "hidden",
-              y: "scroll",
-            },
+            overflow: { x: "hidden", y: "scroll" },
           }}
           defer
         >

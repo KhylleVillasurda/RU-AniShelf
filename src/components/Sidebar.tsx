@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import "overlayscrollbars/overlayscrollbars.css";
+import { useTheme } from "../contexts/ThemeContext";
+import type { Theme } from "../themes/cinematic";
 import {
   LayoutGrid,
   History,
@@ -24,22 +27,41 @@ interface NavItemProps {
   page: string;
   activePage: string;
   onNavigate: (page: string) => void;
+  theme: Theme;
 }
 
-function NavItem({ icon, label, page, activePage, onNavigate }: NavItemProps) {
+function NavItem({
+  icon,
+  label,
+  page,
+  activePage,
+  onNavigate,
+  theme,
+}: NavItemProps) {
   const isActive = activePage === page;
+  const [hovered, setHovered] = useState(false);
+
   return (
     <button
       onClick={() => onNavigate(page)}
-      className={`
-        w-full flex items-center gap-3 px-5 py-2.5 text-sm
-        border-l-2 transition-all duration-150 cursor-pointer
-        ${
-          isActive
-            ? "border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff] font-medium"
-            : "border-transparent text-[#8899bb] hover:bg-[#1c1c30] hover:text-[#f0f4ff]"
-        }
-      `}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="w-full flex items-center gap-3 px-5 py-2.5 text-sm
+        transition-all duration-150 cursor-pointer border-l-2"
+      style={{
+        borderColor: isActive ? theme.accent : "transparent",
+        background: isActive
+          ? theme.accentDim
+          : hovered
+            ? theme.accentDim
+            : "transparent",
+        color: isActive
+          ? theme.accent
+          : hovered
+            ? theme.accent
+            : theme.textMuted,
+        fontFamily: theme.fontBody,
+      }}
     >
       <span className="w-4 h-4 flex-shrink-0">{icon}</span>
       <span>{label}</span>
@@ -47,11 +69,15 @@ function NavItem({ icon, label, page, activePage, onNavigate }: NavItemProps) {
   );
 }
 
-function NavSection({ label }: { label: string }) {
+function NavSection({ label, theme }: { label: string; theme: Theme }) {
   return (
     <div
-      className="px-5 pt-4 pb-1.5 text-[10px] font-bold tracking-[0.2em] 
-      uppercase text-[#445566] font-[Syne]"
+      className="px-5 pt-4 pb-1.5 text-[10px] font-bold tracking-[0.2em]
+        uppercase"
+      style={{
+        color: theme.textMuted,
+        fontFamily: theme.fontDisplay,
+      }}
     >
       {label}
     </div>
@@ -63,26 +89,51 @@ export default function Sidebar({
   onNavigate,
   seriesCount,
 }: SidebarProps) {
+  const { theme } = useTheme();
+
   return (
     <aside
-      className="w-[220px] flex-shrink-0 bg-[#0e0e1a] border-r 
-      border-[#00d4ff]/10 flex flex-col h-full"
+      className="w-[220px] flex-shrink-0 flex flex-col h-full"
+      style={{
+        background: theme.bgSurface,
+        borderRight: `1px solid ${theme.borderSubtle}`,
+        fontFamily: theme.fontBody,
+      }}
     >
       {/* Logo */}
-      <div className="px-5 py-6 border-b border-[#00d4ff]/10">
+      <div
+        className="px-5 py-6"
+        style={{ borderBottom: `1px solid ${theme.borderSubtle}` }}
+      >
         <div className="flex items-center gap-2">
-          <Library className="w-5 h-5 text-[#00d4ff]" />
+          <Library className="w-5 h-5" style={{ color: theme.accent }} />
           <div>
             <span
-              className="font-black text-lg text-[#00d4ff] 
-              drop-shadow-[0_0_10px_rgba(0,212,255,0.4)]"
+              className="font-black text-lg"
+              style={{
+                color: theme.accent,
+                textShadow: theme.glowAccent,
+                fontFamily: theme.fontDisplay,
+              }}
             >
               RU:
             </span>
-            <span className="font-black text-lg text-[#f0f4ff]"> AniShelf</span>
+            <span
+              className="font-black text-lg"
+              style={{
+                color: theme.textPrimary,
+                fontFamily: theme.fontDisplay,
+              }}
+            >
+              {" "}
+              AniShelf
+            </span>
           </div>
         </div>
-        <p className="text-[10px] text-[#445566] mt-1 tracking-widest uppercase pl-7">
+        <p
+          className="text-[10px] mt-1 tracking-widest uppercase pl-7"
+          style={{ color: theme.textMuted }}
+        >
           Anime Library Manager
         </p>
       </div>
@@ -97,20 +148,19 @@ export default function Sidebar({
             autoHide: "scroll",
             autoHideDelay: 800,
           },
-          overflow: {
-            x: "hidden",
-            y: "scroll",
-          },
+          overflow: { x: "hidden", y: "scroll" },
         }}
         defer
       >
-        <NavSection label="Navigate" />
+        {/* Nav items — pass theme down */}
+        <NavSection label="Navigate" theme={theme} />
         <NavItem
           icon={<LayoutGrid size={15} />}
           label="Library"
           page="library"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
         <NavItem
           icon={<History size={15} />}
@@ -118,6 +168,7 @@ export default function Sidebar({
           page="history"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
         <NavItem
           icon={<PlusCircle size={15} />}
@@ -125,15 +176,17 @@ export default function Sidebar({
           page="add"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
 
-        <NavSection label="Filter" />
+        <NavSection label="Filter" theme={theme} />
         <NavItem
           icon={<Play size={15} />}
           label="Watching"
           page="watching"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
         <NavItem
           icon={<CheckCircle size={15} />}
@@ -141,6 +194,7 @@ export default function Sidebar({
           page="completed"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
         <NavItem
           icon={<PauseCircle size={15} />}
@@ -148,6 +202,7 @@ export default function Sidebar({
           page="onhold"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
         <NavItem
           icon={<BookmarkPlus size={15} />}
@@ -155,28 +210,38 @@ export default function Sidebar({
           page="plantowatch"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
 
-        <NavSection label="System" />
+        <NavSection label="System" theme={theme} />
         <NavItem
           icon={<Settings size={15} />}
           label="Settings"
           page="settings"
           activePage={activePage}
           onNavigate={onNavigate}
+          theme={theme}
         />
       </OverlayScrollbarsComponent>
 
       {/* Bottom stats */}
-      <div className="px-5 py-4 border-t border-[#00d4ff]/10">
-        <div className="text-[11px] text-[#445566] mb-2">
+      <div
+        className="px-5 py-4"
+        style={{ borderTop: `1px solid ${theme.borderSubtle}` }}
+      >
+        <div className="text-[11px] mb-2" style={{ color: theme.textMuted }}>
           Library · {seriesCount} series
         </div>
-        <div className="h-[3px] bg-[#1c1c30] rounded-full">
+        <div
+          className="h-[3px] rounded-full"
+          style={{ background: theme.bgElevated }}
+        >
           <div
-            className="h-full bg-gradient-to-r from-[#0099cc] to-[#00d4ff] 
-              rounded-full transition-all duration-500"
-            style={{ width: `${Math.min((seriesCount / 100) * 100, 100)}%` }}
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${Math.min((seriesCount / 100) * 100, 100)}%`,
+              background: theme.progressBar,
+            }}
           />
         </div>
       </div>

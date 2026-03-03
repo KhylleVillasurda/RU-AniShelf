@@ -3,7 +3,7 @@ import {
   CheckCircle,
   PauseCircle,
   BookmarkPlus,
-  Clock,
+  ImageOff,
 } from "lucide-react";
 
 export interface AnimeCardData {
@@ -39,31 +39,31 @@ interface AnimeCardProps {
 const STATUS_CONFIG = {
   watching: {
     label: "Watching",
-    color: "#00d4ff",
-    bg: "rgba(0,212,255,0.15)",
-    border: "rgba(0,212,255,0.3)",
-    icon: <Play size={9} />,
+    color: "#00ffff",
+    bg: "rgba(0,200,255,0.25)",
+    border: "rgba(0,200,255,0.5)",
+    icon: <Play size={8} className="fill-current" />,
   },
   completed: {
     label: "Completed",
-    color: "#00ff9d",
-    bg: "rgba(0,255,157,0.15)",
-    border: "rgba(0,255,157,0.3)",
-    icon: <CheckCircle size={9} />,
+    color: "#00ffaa",
+    bg: "rgba(0,255,150,0.25)",
+    border: "rgba(0,255,150,0.5)",
+    icon: <CheckCircle size={8} />,
   },
   on_hold: {
     label: "On Hold",
-    color: "#ffaa00",
-    bg: "rgba(255,170,0,0.15)",
-    border: "rgba(255,170,0,0.3)",
-    icon: <PauseCircle size={9} />,
+    color: "#ffcc00",
+    bg: "rgba(255,180,0,0.25)",
+    border: "rgba(255,180,0,0.5)",
+    icon: <PauseCircle size={8} />,
   },
   plan_to_watch: {
     label: "Plan to Watch",
-    color: "#667799",
-    bg: "rgba(100,120,150,0.15)",
-    border: "rgba(100,120,150,0.3)",
-    icon: <BookmarkPlus size={9} />,
+    color: "#aabbdd",
+    bg: "rgba(150,170,200,0.2)",
+    border: "rgba(150,170,200,0.35)",
+    icon: <BookmarkPlus size={8} />,
   },
 };
 
@@ -74,86 +74,68 @@ function getProgress(watched: number, total: number | null): number {
 }
 
 export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
-  const status = STATUS_CONFIG[anime.status];
-  const progress = getProgress(anime.episodesWatched, anime.episodeCount);
-  const primaryGenre = anime.genres[0] ?? null;
-
   return (
     <div
       onClick={onClick}
-      style={{ contain: "layout style paint" }}
-      className="group relative flex flex-col bg-[#16162a] rounded-md
-          border border-[#00d4ff]/10 overflow-hidden cursor-pointer
-          transition-all duration-200
-          hover:-translate-y-1 hover:border-[#00d4ff]/30
-          hover:shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_0_1px_rgba(0,212,255,0.1)]"
+      style={{
+        contain: "layout style paint",
+        background: "var(--bg-card)",
+        borderColor: "var(--border-subtle)",
+        fontFamily: "var(--font-body)",
+      }}
+      className="group relative flex flex-col rounded-md
+        border overflow-hidden cursor-pointer
+        transition-all duration-200
+        hover:-translate-y-1"
     >
-      {/* ── Poster ── */}
-      <div className="relative w-full aspect-[2/3] overflow-hidden bg-[#0e0e1a]">
+      {/* Cover art */}
+      <div className="relative aspect-[2/3] overflow-hidden bg-[#0a0a0f]">
         {anime.coverUrl ? (
           <img
             src={anime.coverUrl}
             alt={anime.name}
-            className="w-full h-full object-cover transition-transform
-              duration-300 group-hover:scale-105"
+            className="w-full h-full object-cover
+              group-hover:scale-105 transition-transform duration-500"
           />
         ) : (
-          // Fallback when no cover art available
-          <div
-            className="w-full h-full flex flex-col items-center
-            justify-center gap-2 bg-gradient-to-br from-[#0e0e1a] to-[#16162a]"
-          >
-            <Clock size={28} className="text-[#445566]" />
-            <span className="text-[#445566] text-[10px] text-center px-2">
-              No Cover Art
-            </span>
+          <div className="w-full h-full flex items-center justify-center">
+            <ImageOff size={24} style={{ color: "var(--text-muted)" }} />
           </div>
         )}
+      </div>  {/* ← ADD THIS LINE */}
 
-        {/* Status badge */}
-        <div
-          className="absolute top-2 left-2 flex items-center gap-1
-            px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide
-            uppercase border"
-          style={{
-            color: status.color,
-            background: status.bg,
-            borderColor: status.border,
-          }}
+      {/* Info */}
+      <div className="p-2 flex flex-col gap-1">
+        <h3
+          className="text-xs font-bold leading-tight line-clamp-2"
+          style={{ color: "var(--text-primary)" }}
         >
-          {status.icon}
-          {status.label}
-        </div>
-
-        {/* Progress bar at bottom of poster */}
-        <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-black/40">
-          <div
-            className="h-full bg-gradient-to-r from-[#0099cc] to-[#00d4ff]
-              transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      {/* ── Card Info ── */}
-      <div className="p-2.5 flex flex-col gap-1">
-        {/* Title */}
-        <div className="text-[11px] font-bold text-[#f0f4ff] truncate leading-tight">
           {anime.name}
-        </div>
-
-        {/* Episode count + genre */}
+        </h3>
+        
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-[#445566]">
-            {anime.episodesWatched}
-            {anime.episodeCount ? ` / ${anime.episodeCount}` : ""}
+          <span
+            className="text-[9px] font-black uppercase tracking-wide
+              px-1.5 py-0.5 rounded"
+            style={{
+              color: STATUS_CONFIG[anime.status].color,
+              background: STATUS_CONFIG[anime.status].bg,
+            }}
+          >
+            {STATUS_CONFIG[anime.status].label}
           </span>
-          {primaryGenre && (
-            <span className="text-[9px] text-[#0099cc] font-bold tracking-wide">
-              {primaryGenre}
+          {anime.genres[0] && (
+            <span
+              className="text-[9px] font-bold"
+              style={{ color: "var(--accent)" }}
+            >
+              {anime.genres[0]}
             </span>
           )}
         </div>
+        <span style={{ color: "var(--text-muted)" }} className="text-[10px]">
+          {anime.episodesWatched} / {anime.episodeCount ?? "?"}
+        </span>
       </div>
     </div>
   );

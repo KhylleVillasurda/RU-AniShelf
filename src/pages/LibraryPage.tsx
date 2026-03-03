@@ -512,19 +512,28 @@ export default function LibraryPage({
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleScan()}
-              placeholder="e.g. C:\Videos\Anime"
-              className="flex-1 bg-[#0e0e1a] border border-[#00d4ff]/15
-                rounded-md px-4 py-2.5 text-sm text-[#f0f4ff]
-                placeholder-[#445566] outline-none
-                focus:border-[#00d4ff]/40 transition-colors"
+              placeholder="e.g. E:\Videos\Anime"
+              style={{
+                background: "var(--bg-elevated)",
+                borderColor: "var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontFamily: "var(--font-body)",
+              }}
+              className="flex-1 border rounded-md px-4 py-2.5 text-sm
+              outline-none transition-colors
+              focus:border-[var(--border-strong)]
+              placeholder:text-[var(--text-muted)]"
             />
             <button
               onClick={handleScan}
               disabled={scanning || fetchingMetadata}
+              style={{
+                background: "var(--accent)",
+                fontFamily: "var(--font-body)",
+              }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-md
-    bg-[#00d4ff] text-[#050508] font-bold text-sm
-    hover:bg-[#00bfe8] transition-colors
-    disabled:opacity-50 disabled:cursor-not-allowed"
+    text-[#050508] font-bold text-sm
+    transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderOpen size={15} />
               {scanning ? "Scanning..." : "Scan Library"}
@@ -630,13 +639,20 @@ export default function LibraryPage({
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setActiveGenre(null)}
-                className={`px-3 py-1 rounded-md text-[11px] font-bold
-                  border transition-all
-                  ${
+                className="px-3 py-1 rounded-md text-[11px] font-bold
+    border transition-all"
+                style={{
+                  borderColor:
                     activeGenre === null
-                      ? "border-[#00d4ff]/40 text-[#00d4ff] bg-[#00d4ff]/10"
-                      : "border-[#00d4ff]/10 text-[#445566] hover:text-[#8899bb]"
-                  }`}
+                      ? "var(--border-strong)"
+                      : "var(--border-subtle)",
+                  color:
+                    activeGenre === null
+                      ? "var(--accent)"
+                      : "var(--text-muted)",
+                  background:
+                    activeGenre === null ? "var(--accent-dim)" : "transparent",
+                }}
               >
                 All
               </button>
@@ -646,13 +662,22 @@ export default function LibraryPage({
                   onClick={() =>
                     setActiveGenre(activeGenre === genre ? null : genre)
                   }
-                  className={`px-3 py-1 rounded-md text-[11px] font-bold
-                    border transition-all
-                    ${
+                  className="px-3 py-1 rounded-md text-[11px] font-bold
+      border transition-all"
+                  style={{
+                    borderColor:
                       activeGenre === genre
-                        ? "border-[#00d4ff]/40 text-[#00d4ff] bg-[#00d4ff]/10"
-                        : "border-[#00d4ff]/10 text-[#445566] hover:text-[#8899bb]"
-                    }`}
+                        ? "var(--border-strong)"
+                        : "var(--border-subtle)",
+                    color:
+                      activeGenre === genre
+                        ? "var(--accent)"
+                        : "var(--text-muted)",
+                    background:
+                      activeGenre === genre
+                        ? "var(--accent-dim)"
+                        : "transparent",
+                  }}
                 >
                   {genre}
                 </button>

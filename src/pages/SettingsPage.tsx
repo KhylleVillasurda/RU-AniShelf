@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTheme, themes, ThemeId } from "../contexts/ThemeContext";
 import {
   Settings,
   FolderOpen,
@@ -39,20 +40,29 @@ function SettingsSection({
 }) {
   return (
     <div
-      className="bg-[#0e0e1a] border border-[#00d4ff]/10 rounded-lg
-      overflow-hidden"
+      className="rounded-xl border p-5 flex flex-col gap-4"
+      style={{
+        background: "var(--bg-elevated)",
+        borderColor: "var(--border-subtle)",
+      }}
     >
-      <div className="px-5 py-4 border-b border-[#00d4ff]/10 flex items-center gap-3">
-        <div
-          className="w-8 h-8 rounded-md bg-[#00d4ff]/10 border
-          border-[#00d4ff]/20 flex items-center justify-center
-          text-[#00d4ff]"
-        >
+      <div className="flex items-start gap-3">
+        <div style={{ color: "var(--accent)" }} className="mt-0.5">
           {icon}
         </div>
         <div>
-          <div className="text-sm font-bold text-[#f0f4ff]">{title}</div>
-          <div className="text-[11px] text-[#445566]">{description}</div>
+          <div
+            style={{ color: "var(--text-primary)" }}
+            className="text-sm font-black"
+          >
+            {title}
+          </div>
+          <div
+            style={{ color: "var(--text-muted)" }}
+            className="text-[11px] mt-0.5"
+          >
+            {description}
+          </div>
         </div>
       </div>
       <div className="px-5 py-4">{children}</div>
@@ -76,7 +86,10 @@ function SettingsInput({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-bold text-[#8899bb] tracking-wide">
+      <label
+        style={{ color: "var(--text-secondary)" }}
+        className="text-xs font-bold tracking-wide"
+      >
         {label}
       </label>
       <input
@@ -84,11 +97,20 @@ function SettingsInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="bg-[#13131f] border border-[#00d4ff]/10 rounded-md
-          px-3 py-2 text-sm text-[#f0f4ff] placeholder-[#445566]
-          outline-none focus:border-[#00d4ff]/40 transition-colors"
+        style={{
+          background: "var(--bg-surface)",
+          borderColor: "var(--border-subtle)",
+          color: "var(--text-primary)",
+          fontFamily: "var(--font-body)",
+        }}
+        className="border rounded-md px-3 py-2 text-sm outline-none
+          transition-colors"
       />
-      {hint && <p className="text-[10px] text-[#445566]">{hint}</p>}
+      {hint && (
+        <p style={{ color: "var(--text-muted)" }} className="text-[10px]">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -97,6 +119,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { themeId, setThemeId } = useTheme();
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle",
   );
@@ -199,8 +222,10 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full gap-3">
-        <Loader2 size={18} className="animate-spin text-[#00d4ff]" />
-        <span className="text-[#445566] text-sm">Loading settings...</span>
+        <Loader2 size={18} className="animate-spin text-var(--accent)" />
+        <span className="text-var(--text-muted) text-sm">
+          Loading settings...
+        </span>
       </div>
     );
   }
@@ -214,34 +239,42 @@ export default function SettingsPage() {
         description="Configure your preferred external video player"
       >
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-[#8899bb] tracking-wide">
+          <label
+            style={{ color: "var(--text-secondary)" }}
+            className="text-xs font-bold tracking-wide"
+          >
             Player Executable Path
           </label>
           <div className="flex gap-2">
             <input
+              style={{
+                background: "var(--bg-surface)",
+                borderColor: "var(--border-subtle)",
+                color: "var(--text-primary)",
+                fontFamily: "var(--font-body)",
+              }}
               type="text"
               value={settings.player_path}
               onChange={(e) => updateSetting("player_path", e.target.value)}
               placeholder="e.g. C:\Program Files\VideoLAN\VLC\vlc.exe"
-              className="flex-1 bg-[#13131f] border border-[#00d4ff]/10
-          rounded-md px-3 py-2 text-sm text-[#f0f4ff]
-          placeholder-[#445566] outline-none
-          focus:border-[#00d4ff]/40 transition-colors"
+              className="w-full border rounded-md px-3 py-2 text-sm outline-none
+                  transition-colors"
             />
             <button
               onClick={handleBrowsePlayer}
               className="flex items-center gap-2 px-4 py-2 rounded-md
-          border border-[#00d4ff]/15 text-[#8899bb] text-sm
-          hover:border-[#00d4ff]/40 hover:text-[#00d4ff]
-          hover:bg-[#00d4ff]/07 transition-all flex-shrink-0"
+    border text-sm transition-all flex-shrink-0"
+              style={{
+                borderColor: "var(--border-default)",
+                color: "var(--text-secondary)",
+              }}
             >
               <FolderOpen size={13} />
               Browse
             </button>
           </div>
-          <p className="text-[10px] text-[#445566]">
-            Leave empty to use your system default player. Supports VLC, MPC-HC,
-            MPV and any other player.
+          <p style={{ color: "var(--text-muted)" }} className="text-[10px]">
+            Leave empty to use your system default player...
           </p>
         </div>
       </SettingsSection>
@@ -268,7 +301,10 @@ export default function SettingsPage() {
         description="Choose where to fetch anime metadata from"
       >
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold text-[#8899bb] tracking-wide">
+          <label
+            style={{ color: "var(--text-secondary)" }}
+            className="text-xs font-bold tracking-wide"
+          >
             Source
           </label>
           <div className="flex gap-2">
@@ -276,24 +312,29 @@ export default function SettingsPage() {
               { value: "anilist", label: "AniList", hint: "No API key needed" },
               { value: "mal", label: "MyAnimeList", hint: "Requires API key" },
               { value: "both", label: "Both", hint: "AniList + MAL merged" },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => updateSetting("metadata_source", opt.value)}
-                className={`flex-1 flex flex-col items-center gap-1 py-3
-                  rounded-md border text-xs font-bold transition-all
-                  ${
-                    settings.metadata_source === opt.value
-                      ? "border-[#00d4ff]/40 text-[#00d4ff] bg-[#00d4ff]/10"
-                      : "border-[#00d4ff]/10 text-[#445566] hover:text-[#8899bb]"
-                  }`}
-              >
-                {opt.label}
-                <span className="text-[9px] font-normal opacity-70">
-                  {opt.hint}
-                </span>
-              </button>
-            ))}
+            ].map((opt) => {
+              const isActive = settings.metadata_source === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => updateSetting("metadata_source", opt.value)}
+                  className="flex-1 flex flex-col items-center gap-1 py-3
+        rounded-md border text-xs font-bold transition-all"
+                  style={{
+                    borderColor: isActive
+                      ? "var(--border-strong)"
+                      : "var(--border-subtle)",
+                    color: isActive ? "var(--accent)" : "var(--text-muted)",
+                    background: isActive ? "var(--accent-dim)" : "transparent",
+                  }}
+                >
+                  {opt.label}
+                  <span className="text-[9px] font-normal opacity-70">
+                    {opt.hint}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </SettingsSection>
@@ -307,10 +348,16 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-[#f0f4ff] mb-0.5">
+              <div
+                style={{ color: "var(--text-primary)" }}
+                className="text-sm mb-0.5"
+              >
                 Clear Watch History
               </div>
-              <div className="text-[11px] text-[#445566]">
+              <div
+                style={{ color: "var(--text-muted)" }}
+                className="text-[11px]"
+              >
                 Permanently removes all watch history entries
               </div>
             </div>
@@ -329,6 +376,73 @@ export default function SettingsPage() {
               )}
               Clear History
             </button>
+          </div>
+        </div>
+      </SettingsSection>
+
+      {/* ── Theme ── */}
+      <SettingsSection
+        icon={<Settings size={15} />}
+        title="Appearance"
+        description="Choose your preferred visual theme"
+      >
+        <div className="flex flex-col gap-2">
+          <label
+            style={{ color: "var(--text-secondary)" }}
+            className="text-xs font-bold tracking-wide"
+          >
+            Theme
+          </label>
+          <div className="flex gap-3">
+            {(Object.keys(themes) as ThemeId[]).map((id) => {
+              const t = themes[id];
+              const isActive = themeId === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setThemeId(id)}
+                  className="flex-1 flex flex-col items-center gap-2
+              py-4 rounded-md border transition-all"
+                  style={{
+                    borderColor: isActive ? t.accent : "rgba(100,120,150,0.2)",
+                    background: isActive ? t.accentDim : "transparent",
+                  }}
+                >
+                  {/* Mini preview */}
+                  <div
+                    className="w-16 h-10 rounded border flex items-center
+                justify-center gap-1"
+                    style={{
+                      background: t.bgSurface,
+                      borderColor: t.borderDefault,
+                    }}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      {[1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          className="rounded-full"
+                          style={{
+                            width: i === 1 ? "28px" : i === 2 ? "20px" : "24px",
+                            height: "2px",
+                            background: i === 1 ? t.accent : t.textMuted,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <span
+                    className="text-[11px] font-bold"
+                    style={{
+                      color: isActive ? t.accent : "#667799",
+                      fontFamily: t.fontBody,
+                    }}
+                  >
+                    {t.name}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </SettingsSection>
@@ -354,10 +468,8 @@ export default function SettingsPage() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-md
-            bg-[#00d4ff] text-[#050508] font-bold text-sm
-            hover:bg-[#00bfe8] transition-colors
-            disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: "var(--accent)" }}
+          className="px-6 py-2.5 rounded-md font-bold text-sm text-[#050508]"
         >
           {saving ? (
             <Loader2 size={14} className="animate-spin" />

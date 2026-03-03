@@ -7,6 +7,35 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* Defaults — overridden by JS above */
+  --accent: #00d4ff;
+  --accent-dim: rgba(0,212,255,0.1);
+  --accent-hover: #00bfe8;
+  --bg-base: #050508;
+  --bg-surface: #0e0e1a;
+  --bg-elevated: #13131f;
+  --bg-card: #16162a;
+  --border-subtle: rgba(0,212,255,0.08);
+  --border-default: rgba(0,212,255,0.15);
+  --border-strong: rgba(0,212,255,0.3);
+  --text-primary: #f0f4ff;
+  --text-secondary: #8899bb;
+  --text-muted: #445566;
+  --font-body: 'DM Sans', sans-serif;
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --glow-accent: 0 0 10px rgba(0,212,255,0.4);
+  --glow-card: 0 8px 30px rgba(0,0,0,0.5);
+  --progress-bar: linear-gradient(to right, #0099cc, #00d4ff);
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
 /* Custom scrollbar — thinner and styled to match theme */
 ::-webkit-scrollbar {
   display: none;
@@ -38,17 +67,15 @@ html {
 }
 
 /* ── OverlayScrollbars theme to match RU: AniShelf ── */
+/* ── OverlayScrollbars cyan theme ── */
 .os-theme-dark.os-scrollbar {
   --os-size: 6px;
-  --os-padding-perpendicular: 0px;
-  --os-padding-axis: 0px;
-  --os-track-border-radius: 999px;
+  --os-handle-border-radius: 999px;
+  --os-handle-bg: rgba(0,212,255,0.2);
+  --os-handle-bg-hover: rgba(0,212,255,0.5);
+  --os-handle-bg-active: rgba(0,212,255,0.7);
+  --os-handle-min-size: 40px;
   --os-track-bg: transparent;
   --os-track-bg-hover: transparent;
   --os-track-bg-active: transparent;
-  --os-handle-border-radius: 999px;
-  --os-handle-bg: rgba(0, 212, 255, 0.2);
-  --os-handle-bg-hover: rgba(0, 212, 255, 0.5);
-  --os-handle-bg-active: rgba(0, 212, 255, 0.7);
-  --os-handle-min-size: 40px;
 }

@@ -90,7 +90,9 @@ export default function HistoryPage() {
     return (
       <div className="flex items-center justify-center h-full gap-3">
         <Loader2 size={18} className="animate-spin text-[#00d4ff]" />
-        <span className="text-[#445566] text-sm">Loading history...</span>
+        <span style={{ color: "var(--text-muted)" }} className="text-sm">
+          Loading history...
+        </span>
       </div>
     );
   }
@@ -106,9 +108,11 @@ export default function HistoryPage() {
   if (history.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <History size={40} className="text-[#445566]" />
-        <p className="text-[#445566] text-sm">No watch history yet</p>
-        <p className="text-[#445566] text-xs">
+        <History size={40} style={{ color: "var(--text-muted)" }} />
+        <p style={{ color: "var(--text-muted)" }} className="text-sm">
+          No watch history yet
+        </p>
+        <p style={{ color: "var(--text-muted)" }} className="text-xs">
           Play an episode to start tracking your history
         </p>
       </div>
@@ -119,12 +123,13 @@ export default function HistoryPage() {
     <div className="flex flex-col gap-6">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
-        <p className="text-[#445566] text-xs">
+        <p style={{ color: "var(--text-muted)" }} className="text-xs">
           {history.length} episodes watched
         </p>
         <button
           onClick={loadHistory}
-          className="text-xs text-[#445566] hover:text-[#00d4ff] transition-colors"
+          style={{ color: "var(--text-muted)" }}
+          className="hover:text-[var(--accent)] transition-colors"
         >
           Refresh
         </button>
@@ -137,12 +142,16 @@ export default function HistoryPage() {
           <div className="flex items-center gap-3">
             <span
               className="text-[11px] font-bold tracking-[0.15em]
-              uppercase text-[#445566]"
+              uppercase"
+              style={{ color: "var(--text-muted)" }}
             >
               {date}
             </span>
             <div className="flex-1 h-px bg-[#00d4ff]/08" />
-            <span className="text-[10px] text-[#445566]">
+            <span
+              style={{ color: "var(--text-muted)" }}
+              className="text-[10px]"
+            >
               {events.length} episode{events.length !== 1 ? "s" : ""}
             </span>
           </div>
@@ -153,14 +162,19 @@ export default function HistoryPage() {
             return (
               <div
                 key={i}
+                style={{
+                  background: "var(--bg-surface)",
+                  borderColor: "var(--border-default)",
+                }}
                 className="flex items-center gap-4 p-3 rounded-lg
-                  bg-[#0e0e1a] border border-[#00d4ff]/10
-                  hover:border-[#00d4ff]/25 transition-all group"
+                  border transition-all group
+                  hover:border-[var(--border-default)]/40"
               >
                 {/* Cover thumbnail */}
                 <div
+                  style={{ background: "var(--bg-elevated)" }}
                   className="w-10 h-14 rounded flex-shrink-0 overflow-hidden
-                  bg-[#13131f] border border-[#00d4ff]/10"
+                  border hover:border-[var(--border-default)]/10"
                 >
                   {event.cover_url ? (
                     <img
@@ -173,25 +187,34 @@ export default function HistoryPage() {
                       className="w-full h-full flex items-center
                       justify-center"
                     >
-                      <Tv size={14} className="text-[#445566]" />
+                      <Tv size={14} style={{ color: "var(--text-muted)" }} />
                     </div>
                   )}
                 </div>
 
                 {/* Info */}
                 <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                  <span className="text-sm font-bold text-[#f0f4ff] truncate">
+                  <span
+                    style={{ color: "var(--text-secondary)" }}
+                    className="text-sm font-bold truncate"
+                  >
                     {event.series_name}
                   </span>
-                  <span className="text-xs text-[#8899bb] truncate">
+                  <span
+                    style={{ color: "var(--text-secondary)" }}
+                    className="text-xstruncate"
+                  >
                     {event.season_name} · Ep {event.episode_number}
                     {event.episode_name !== event.episode_path && (
                       <> · {cleanName(event.episode_name)}</>
                     )}
                   </span>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <Clock size={10} className="text-[#445566]" />
-                    <span className="text-[10px] text-[#445566]">
+                    <Clock style={{ color: "var(--text-muted)" }} size={10} />
+                    <span
+                      style={{ color: "var(--text-muted)" }}
+                      className="text-[10px]"
+                    >
                       {timeAgo(event.watched_at)}
                     </span>
                   </div>
@@ -203,9 +226,10 @@ export default function HistoryPage() {
                     handleReplay(event.episode_path, event.episode_path)
                   }
                   disabled={!!openingFile}
+                  style={{ color: "var(--text-muted)" }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md
-                    border border-[#00d4ff]/10 text-[#445566] text-xs
-                    hover:border-[#00d4ff]/40 hover:text-[#00d4ff]
+                    border border-[var(--border-default)]/20  text-xs
+                    hover:border-[var(--border-default)]/45 hover:text-[#00d4ff]
                     hover:bg-[#00d4ff]/07 transition-all
                     disabled:opacity-40 disabled:cursor-not-allowed
                     opacity-0 group-hover:opacity-100"

@@ -13,40 +13,44 @@ export default function Topbar({
 }: TopbarProps) {
   return (
     <header
-      className="h-14 flex items-center gap-4 px-6 
-      bg-[#0e0e1a] border-b border-[#00d4ff]/10 flex-shrink-0"
+      className="flex-shrink-0 flex items-center gap-4 px-6 py-3 border-b"
+      style={{
+        background: "var(--bg-surface)",
+        borderColor: "var(--border-subtle)",
+      }}
     >
-      {/* Page title */}
-      <h1 className="font-black text-lg text-[#f0f4ff] tracking-tight flex-shrink-0">
+      <h1
+        className="text-base font-black tracking-tight flex-shrink-0"
+        style={{
+          color: "var(--text-primary)",
+          fontFamily: "var(--font-display)",
+        }}
+      >
         {title}
       </h1>
 
-      {/* Search */}
       <div
-        className="flex-1 flex items-center gap-2 bg-[#13131f] 
-        border border-[#00d4ff]/10 rounded-md px-3 py-1.5
-        focus-within:border-[#00d4ff]/30 transition-colors"
+        className="flex items-center gap-2 flex-1 max-w-sm
+          border rounded-md px-3 py-1.5 transition-colors"
+        style={{
+          background: "var(--bg-elevated)",
+          borderColor: "var(--border-subtle)",
+        }}
       >
-        <Search size={13} className="text-[#445566] flex-shrink-0" />
+        <Search size={13} style={{ color: "var(--text-muted)" }} />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search your anime..."
-          className="flex-1 bg-transparent text-[#f0f4ff] text-sm 
-            placeholder-[#445566] outline-none"
+          className="flex-1 bg-transparent text-xs outline-none
+            placeholder-[var(--text-muted)]"
+          style={{
+            color: "var(--text-primary)",
+            fontFamily: "var(--font-body)",
+          }}
         />
       </div>
-
-      {/* Filter button */}
-      <button
-        className="flex items-center gap-2 px-3 py-1.5 rounded-md
-        border border-[#00d4ff]/10 text-[#8899bb] text-sm
-        hover:border-[#00d4ff]/30 hover:text-[#f0f4ff] transition-all"
-      >
-        <SlidersHorizontal size={13} />
-        <span>Filter</span>
-      </button>
     </header>
   );
 }
