@@ -4,6 +4,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import AnimeCard, { AnimeCardData, SeasonData } from "../components/AnimeCard";
 import { FolderOpen, Loader2, ChevronDown, RefreshCw } from "lucide-react";
 import ScanConfirmModal, { ScanEntry } from "../components/ScanConfirmModal";
+import AniListPickerModal, {
+  SearchResult,
+} from "../components/AniListPickerModal";
 
 interface EpisodeFile {
   file_name: string;
@@ -28,19 +31,6 @@ interface DiscoveredSeries {
   path: string;
   episode_files: EpisodeFile[];
   seasons: Season[];
-}
-
-interface SeriesMetadata {
-  anilist_id: number;
-  title: string;
-  title_english: string | null;
-  title_native: string | null;
-  synopsis: string | null;
-  episode_count: number | null;
-  anilist_score: number | null;
-  cover_url: string | null;
-  genres: string[];
-  status: string | null;
 }
 
 interface SeriesDto {
@@ -226,12 +216,26 @@ export default function LibraryPage({
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [pendingScan, setPendingScan] = useState<ScanEntry[] | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
+  const [pickerData, setPickerData] = useState<{
+    results: SearchResult[];
+    searchedTitle: string;
+    resolve: (result: SearchResult | null) => void;
+  } | null>(null);
 
   // Load library from SQLite on startup
   useEffect(() => {
     loadLibraryFromDb();
     loadSavedFolder();
   }, []);
+
+  function showPicker(
+    results: SearchResult[],
+    searchedTitle: string,
+  ): Promise<SearchResult | null> {
+    return new Promise((resolve) => {
+      setPickerData({ results, searchedTitle, resolve });
+    });
+  }
 
   async function loadLibraryFromDb() {
     try {
@@ -309,40 +313,16 @@ export default function LibraryPage({
     return result;
   }, [library, searchQuery, statusFilter, activeGenre, sortBy, statusUpdates]);
 
-  async function fetchWithRetry(
-    title: string,
-    retries = 3,
-  ): Promise<SeriesMetadata> {
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        const meta = await invoke<SeriesMetadata>("fetch_metadata", { title });
-        return meta;
-      } catch (err) {
-        const isLastAttempt = attempt === retries - 1;
-        if (isLastAttempt) throw err;
-        // Always retry — could be rate limit disguised as "no results"
-        const waitMs = 3000 * (attempt + 1);
-        console.log(
-          `⏳ Retrying "${title}" in ${waitMs}ms (attempt ${attempt + 1})`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-      }
-    }
-    throw new Error(`Failed after ${retries} attempts`);
-  }
-
   async function handleConfirmAndFetch(confirmedEntries: ScanEntry[]) {
     setPendingScan(null);
     setFetchingMetadata(true);
     setProgress({ current: 0, total: confirmedEntries.length });
 
-    // We still need the full DiscoveredSeries for seasons/episodes
-    // Re-scan to get the full data (it's fast since it's just file system)
     const discovered = await invoke<DiscoveredSeries[]>("scan_anime_folder", {
       path: folderPath,
     });
 
-    const results: AnimeCardData[] = [];
+    const cards: AnimeCardData[] = []; // ← renamed from results to cards
 
     for (let i = 0; i < confirmedEntries.length; i++) {
       const entry = confirmedEntries[i];
@@ -355,10 +335,6 @@ export default function LibraryPage({
 
       if (!series) {
         console.warn("No matching series found for path:", entry.path);
-        console.log(
-          "Available paths:",
-          discovered.map((d) => d.path),
-        );
         continue;
       }
 
@@ -368,7 +344,25 @@ export default function LibraryPage({
       });
 
       try {
-        const meta = await fetchWithRetry(entry.editedName);
+        // Search for multiple results first
+        const searchResults = await invoke<SearchResult[]>(
+          "search_anime_multi",
+          {
+            title: entry.editedName,
+          },
+        );
+
+        let meta: SearchResult;
+
+        if (searchResults.length === 1) {
+          meta = searchResults[0];
+        } else if (searchResults.length > 1) {
+          const picked = await showPicker(searchResults, entry.editedName);
+          meta = picked ?? searchResults[0];
+        } else {
+          throw new Error(`No results found for '${entry.editedName}'`);
+        }
+
         console.log("SUCCESS: Got metadata:", meta.title);
 
         await new Promise((resolve) => setTimeout(resolve, 2500));
@@ -401,7 +395,8 @@ export default function LibraryPage({
           forceRefresh: isRescanning,
         });
 
-        results.push({
+        cards.push({
+          // ← cards not results
           id: savedId,
           name: meta.title,
           coverUrl: meta.cover_url,
@@ -410,18 +405,14 @@ export default function LibraryPage({
           episodeCount: meta.episode_count,
           genres: meta.genres,
           score: meta.anilist_score ?? undefined,
-          synopsis: meta.synopsis ?? undefined,
+          synopsis: meta.synopsis ?? undefined, // ← null to undefined
           seasons: series.seasons,
         });
       } catch (err) {
-        console.error(
-          "❌ Metadata failed for:",
-          entry.editedName,
-          "Error:",
-          err,
-        );
+        console.error("Metadata failed for:", entry.editedName, "Error:", err);
         const cleanedName = cleanTitleForSearch(series.name);
-        results.push({
+        cards.push({
+          // ← cards not results
           name: cleanedName,
           coverUrl: null,
           status: "plan_to_watch",
@@ -432,8 +423,8 @@ export default function LibraryPage({
         });
       }
 
-      setLibrary([...results]);
-      onSeriesCountChange(results.length);
+      setLibrary([...cards]); // ← cards not results
+      onSeriesCountChange(cards.length); // ← cards not results
     }
 
     setHasLibrary(true);
@@ -446,7 +437,6 @@ export default function LibraryPage({
 
     setFetchingMetadata(false);
   }
-
   async function handleRescan() {
     setIsRescanning(true); // ← marks this as a rescan
     setHasLibrary(false);
@@ -721,6 +711,24 @@ export default function LibraryPage({
           onCancel={() => {
             setPendingScan(null);
             setIsRescanning(false);
+          }}
+        />
+      )}
+      {pickerData && (
+        <AniListPickerModal
+          results={pickerData.results}
+          searchedTitle={pickerData.searchedTitle}
+          onConfirm={(result) => {
+            pickerData.resolve(result);
+            setPickerData(null);
+          }}
+          onSkip={() => {
+            pickerData.resolve(pickerData.results[0]);
+            setPickerData(null);
+          }}
+          onCancel={() => {
+            pickerData.resolve(null);
+            setPickerData(null);
           }}
         />
       )}

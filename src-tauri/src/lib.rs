@@ -4,6 +4,45 @@ mod scanner;
 use std::sync::Mutex;
 struct DbState(Mutex<rusqlite::Connection>);
 
+#[derive(serde::Serialize)]
+struct SearchResultDto {
+    anilist_id: i64,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    anilist_score: Option<f64>,
+    cover_url: Option<String>,
+    genres: Vec<String>,
+    status: Option<String>,
+    format: Option<String>,
+    season_year: Option<i32>,
+}
+
+#[tauri::command]
+async fn search_anime_multi(title: String) -> Result<Vec<SearchResultDto>, String> {
+    let results = metadata::search_anime_multi(&title).await?;
+
+    Ok(results
+        .into_iter()
+        .map(|m| SearchResultDto {
+            anilist_id: m.anilist_id,
+            title: m.title,
+            title_english: m.title_english,
+            title_native: m.title_native,
+            synopsis: m.synopsis,
+            episode_count: m.episode_count,
+            anilist_score: m.anilist_score,
+            cover_url: m.cover_url,
+            genres: m.genres,
+            status: m.status,
+            format: m.format,
+            season_year: m.season_year,
+        })
+        .collect())
+}
+
 #[tauri::command]
 fn scan_anime_folder(path: String) -> Vec<scanner::DiscoveredSeries> {
     scanner::scan_folder(&path)
@@ -47,7 +86,7 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
 pub fn run() {
     let conn = db::initialize_db().expect("Failed to initialize database");
 
-    println!("✅ Database initialized successfully");
+    println!("SUCCESS: Database initialized successfully");
 
     tauri::Builder::default()
         .manage(DbState(Mutex::new(conn)))
@@ -66,6 +105,7 @@ pub fn run() {
             get_library,
             save_series_to_library,
             update_series_status,
+            search_anime_multi,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,10 +1,23 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-/// The AniList GraphQL endpoint — all queries go here
 const ANILIST_URL: &str = "https://graphql.anilist.co";
 
-/// What we send TO AniList
+#[derive(Deserialize)]
+struct AniListPageResponse {
+    data: Option<AniListPageData>,
+}
+
+#[derive(Deserialize)]
+struct AniListPageData {
+    #[serde(rename = "Page")]
+    page: Option<AniListPage>,
+}
+
+#[derive(Deserialize)]
+struct AniListPage {
+    media: Option<Vec<AniListMedia>>,
+}
 #[derive(Serialize)]
 struct GraphQLQuery {
     query: String,
@@ -36,6 +49,8 @@ struct AniListMedia {
     cover_image: Option<AniListCoverImage>,
     genres: Option<Vec<String>>,
     status: Option<String>,
+    format: Option<String>,
+    season_year: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -51,7 +66,6 @@ struct AniListCoverImage {
     medium: Option<String>,
 }
 
-/// Clean struct we return to React — only what we need
 #[derive(Debug, Serialize)]
 pub struct SeriesMetadata {
     pub anilist_id: i64,
@@ -64,6 +78,8 @@ pub struct SeriesMetadata {
     pub cover_url: Option<String>,
     pub genres: Vec<String>,
     pub status: Option<String>,
+    pub format: Option<String>,
+    pub season_year: Option<i32>,
 }
 
 /// Strips HTML tags from AniList synopsis
@@ -172,7 +188,104 @@ pub async fn fetch_anilist_metadata(title: &str) -> Result<SeriesMetadata, Strin
         cover_url,
         genres: media.genres.unwrap_or_default(),
         status: media.status,
+        format: media.format,
+        season_year: media.season_year,
     })
+}
+
+pub async fn search_anime_multi(title: &str) -> Result<Vec<SeriesMetadata>, String> {
+    let query = r#"
+        query ($search: String) {
+            Page(perPage: 5) {
+                media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                    id
+                    title {
+                        romaji
+                        english
+                        native
+                    }
+                    description
+                    episodes
+                    averageScore
+                    coverImage {
+                        large
+                        medium
+                    }
+                    genres
+                    status
+                    format
+                    seasonYear
+                }
+            }
+        }
+    "#
+    .to_string();
+
+    let variables = serde_json::json!({ "search": title });
+
+    let client = Client::builder()
+        .use_rustls_tls()
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let response = client
+        .post(ANILIST_URL)
+        .header("Content-Type", "application/json")
+        .json(&GraphQLQuery { query, variables })
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    let body: AniListPageResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+
+    let media_list = body
+        .data
+        .and_then(|d| d.page)
+        .and_then(|p| p.media)
+        .unwrap_or_default();
+
+    if media_list.is_empty() {
+        return Err(format!("No results found for '{}'", title));
+    }
+
+    let results = media_list
+        .into_iter()
+        .map(|media| {
+            let display_title = media
+                .title
+                .as_ref()
+                .and_then(|t| t.romaji.clone().or_else(|| t.english.clone()))
+                .unwrap_or_else(|| title.to_string());
+
+            let title_english = media.title.as_ref().and_then(|t| t.english.clone());
+            let title_native = media.title.as_ref().and_then(|t| t.native.clone());
+            let synopsis = media.description.map(|d| strip_html(&d));
+            let cover_url = media.cover_image.and_then(|c| c.large.or(c.medium));
+            let anilist_score = media
+                .average_score
+                .map(|s| (s / 10.0 * 10.0).round() / 10.0);
+
+            SeriesMetadata {
+                anilist_id: media.id.unwrap_or(0),
+                title: display_title,
+                title_english,
+                title_native,
+                synopsis,
+                episode_count: media.episodes,
+                anilist_score,
+                cover_url,
+                genres: media.genres.unwrap_or_default(),
+                status: media.status,
+                format: media.format,
+                season_year: media.season_year,
+            }
+        })
+        .collect();
+
+    Ok(results)
 }
 
 /// Downloads a cover image and saves it locally
