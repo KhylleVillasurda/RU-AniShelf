@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimeCardData, EpisodeFileData } from "../components/AnimeCard";
+import { SearchResult } from "../components/AniListPickerModal";
+import MetadataEditModal from "../components/MetadataEditModal";
 import {
   ArrowLeft,
   Play,
@@ -13,6 +15,7 @@ import {
   ChevronUp,
   FileVideo,
   Loader2,
+  Pencil,
 } from "lucide-react";
 
 interface SeriesDetailPageProps {
@@ -142,14 +145,31 @@ export default function SeriesDetailPage({
   onBack,
   onStatusUpdate,
 }: SeriesDetailPageProps) {
+  const [editingMetadata, setEditingMetadata] = useState(false);
+  const [currentAnime, setCurrentAnime] = useState(anime);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(
     // Expand the first season by default
     new Set(
-      anime.seasons?.[0]?.season_name ? [anime.seasons[0].season_name] : [],
+      currentAnime.seasons?.[0]?.season_name
+        ? [currentAnime.seasons[0].season_name]
+        : [],
     ),
   );
   const [openingFile, setOpeningFile] = useState<string | null>(null);
   const [openError, setOpenError] = useState("");
+
+  function handleMetadataSaved(result: SearchResult) {
+    setCurrentAnime((prev) => ({
+      ...prev,
+      name: result.title,
+      coverUrl: result.cover_url,
+      synopsis: result.synopsis ?? undefined,
+      episodeCount: result.episode_count,
+      score: result.anilist_score ?? undefined,
+      genres: result.genres,
+    }));
+    setEditingMetadata(false);
+  }
 
   function toggleSeason(seasonName: string) {
     setExpandedSeasons((prev) => {
@@ -159,19 +179,19 @@ export default function SeriesDetailPage({
     });
   }
 
-  const [currentStatus, setCurrentStatus] = useState(anime.status);
+  const [currentStatus, setCurrentStatus] = useState(currentAnime.status);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
   async function handleStatusChange(newStatus: AnimeCardData["status"]) {
-    if (!anime.id || newStatus === currentStatus) return;
+    if (!currentAnime.id || newStatus === currentStatus) return;
     setUpdatingStatus(true);
     try {
       await invoke("update_series_status", {
-        seriesId: anime.id,
+        seriesId: currentAnime.id,
         status: newStatus,
       });
       setCurrentStatus(newStatus);
-      onStatusUpdate?.(anime.id, newStatus);
+      onStatusUpdate?.(currentAnime.id, newStatus);
     } catch (err) {
       console.error("Failed to update status:", err);
     } finally {
@@ -193,9 +213,9 @@ export default function SeriesDetailPage({
 
       // Log to watch history
       await invoke("log_watch_event", {
-        seriesName: anime.name,
-        seriesPath: anime.seasons?.[0]?.path ?? "",
-        coverUrl: anime.coverUrl,
+        seriesName: currentAnime.name,
+        seriesPath: currentAnime.seasons?.[0]?.path ?? "",
+        coverUrl: currentAnime.coverUrl,
         episodeName: fileName,
         episodePath: filePath,
         episodeNumber,
@@ -235,10 +255,10 @@ export default function SeriesDetailPage({
       <div className="flex gap-6">
         {/* Cover art */}
         <div className="flex-shrink-0 w-[160px]">
-          {anime.coverUrl ? (
+          {currentAnime.coverUrl ? (
             <img
-              src={anime.coverUrl}
-              alt={anime.name}
+              src={currentAnime.coverUrl}
+              alt={currentAnime.name}
               className="w-full rounded-lg border border-[#00d4ff]/15
                 shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
             />
@@ -256,32 +276,32 @@ export default function SeriesDetailPage({
         <div className="flex flex-col gap-3 flex-1 min-w-0">
           <div>
             <h1 className="text-2xl font-black text-[#f0f4ff] leading-tight mb-1">
-              {anime.name}
+              {currentAnime.name}
             </h1>
           </div>
 
           {/* Stats row */}
           <div className="flex items-center gap-3 flex-wrap">
             {/* Score */}
-            {anime.score && (
+            {currentAnime.score && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
       bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
               >
                 <Star size={11} className="text-[#ffaa00]" />
-                <span>{anime.score}</span>
+                <span>{currentAnime.score}</span>
                 <span className="text-[#445566]">/ 10</span>
               </div>
             )}
 
             {/* Episode count */}
-            {anime.episodeCount && (
+            {currentAnime.episodeCount && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
       bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
               >
                 <Tv size={11} />
-                <span>{anime.episodeCount}</span>
+                <span>{currentAnime.episodeCount}</span>
                 <span className="text-[#445566]">episodes</span>
               </div>
             )}
@@ -295,9 +315,9 @@ export default function SeriesDetailPage({
           </div>
 
           {/* Genres */}
-          {anime.genres.length > 0 && (
+          {currentAnime.genres.length > 0 && (
             <div className="flex gap-2 flex-wrap">
-              {anime.genres.map((g, i) => (
+              {currentAnime.genres.map((g, i) => (
                 <span
                   key={i}
                   className="px-2.5 py-0.5 rounded text-[10px]
@@ -311,15 +331,33 @@ export default function SeriesDetailPage({
           )}
 
           {/* Synopsis */}
-          {anime.synopsis && (
+          {currentAnime.synopsis && (
             <p
               className="text-[#8899bb] text-sm leading-relaxed
               line-clamp-4"
             >
-              {anime.synopsis}
+              {currentAnime.synopsis}
             </p>
           )}
         </div>
+      </div>
+
+      {/* Edit Metadata Button */}
+      <div className="flex items-start gap-2">
+        <h1
+          className="text-2xl font-black leading-tight mb-1"
+          style={{ color: "var(--text-primary)" }}
+        >
+          {currentAnime.name}
+        </h1>
+        <button
+          onClick={() => setEditingMetadata(true)}
+          className="mt-1 flex-shrink-0 transition-colors"
+          style={{ color: "var(--text-muted)" }}
+          title="Edit metadata"
+        >
+          <Pencil size={14} />
+        </button>
       </div>
 
       {/* ── Error message ── */}
@@ -341,8 +379,8 @@ export default function SeriesDetailPage({
           Episodes
         </h2>
 
-        {anime.seasons && anime.seasons.length > 0 ? (
-          anime.seasons.map((season) => {
+        {currentAnime.seasons && currentAnime.seasons.length > 0 ? (
+          currentAnime.seasons.map((season) => {
             const isExpanded = expandedSeasons.has(season.season_name);
             return (
               <div
@@ -463,6 +501,15 @@ export default function SeriesDetailPage({
           </div>
         )}
       </div>
+      {/* ── Metadata Edit Modal ── */}
+      {editingMetadata && anime.id && (
+        <MetadataEditModal
+          seriesId={anime.id}
+          currentTitle={currentAnime.name}
+          onSaved={handleMetadataSaved}
+          onCancel={() => setEditingMetadata(false)}
+        />
+      )}
     </div>
   );
 }

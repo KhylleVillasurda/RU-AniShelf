@@ -82,6 +82,94 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
     Ok(())
 }
 
+#[tauri::command]
+async fn update_series_metadata(
+    state: tauri::State<'_, DbState>,
+    series_id: i64,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    cover_remote_url: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    anilist_id: Option<i64>,
+    anilist_score: Option<f64>,
+    genres: Vec<String>,
+) -> Result<(), String> {
+    // Re-download cover art with new URL
+    let cover_local_path = if let Some(ref url) = cover_remote_url {
+        match metadata::download_cover(url, &title).await {
+            Ok(path) => Some(path),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    conn.execute(
+        "UPDATE series SET
+            title = ?1,
+            title_english = ?2,
+            title_native = ?3,
+            cover_remote_url = ?4,
+            cover_local_path = ?5,
+            synopsis = ?6,
+            episode_count = ?7,
+            anilist_id = ?8,
+            anilist_score = ?9,
+            updated_at = ?10
+         WHERE id = ?11",
+        rusqlite::params![
+            title,
+            title_english,
+            title_native,
+            cover_remote_url,
+            cover_local_path,
+            synopsis,
+            episode_count,
+            anilist_id,
+            anilist_score,
+            now,
+            series_id,
+        ],
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    // Update genres — clear and reinsert
+    conn.execute(
+        "DELETE FROM series_genres WHERE series_id = ?1",
+        [series_id],
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    for genre in &genres {
+        conn.execute("INSERT OR IGNORE INTO genres (name) VALUES (?1)", [genre])
+            .map_err(|e| format!("DB error: {}", e))?;
+
+        let genre_id: i64 = conn
+            .query_row("SELECT id FROM genres WHERE name = ?1", [genre], |row| {
+                row.get(0)
+            })
+            .map_err(|e| format!("DB error: {}", e))?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO series_genres (series_id, genre_id)
+             VALUES (?1, ?2)",
+            rusqlite::params![series_id, genre_id],
+        )
+        .map_err(|e| format!("DB error: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let conn = db::initialize_db().expect("Failed to initialize database");
@@ -106,6 +194,7 @@ pub fn run() {
             save_series_to_library,
             update_series_status,
             search_anime_multi,
+            update_series_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
