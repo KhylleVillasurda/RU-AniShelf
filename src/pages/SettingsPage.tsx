@@ -12,6 +12,8 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
+  Plus,
+  X,
 } from "lucide-react";
 
 interface SettingsState {
@@ -70,56 +72,13 @@ function SettingsSection({
   );
 }
 
-// Reusable input row
-function SettingsInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  hint?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label
-        style={{ color: "var(--text-secondary)" }}
-        className="text-xs font-bold tracking-wide"
-      >
-        {label}
-      </label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          background: "var(--bg-surface)",
-          borderColor: "var(--border-subtle)",
-          color: "var(--text-primary)",
-          fontFamily: "var(--font-body)",
-        }}
-        className="border rounded-md px-3 py-2 text-sm outline-none
-          transition-colors"
-      />
-      {hint && (
-        <p style={{ color: "var(--text-muted)" }} className="text-[10px]">
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { themeId, setThemeId } = useTheme();
+  const [folders, setFolders] = useState<string[]>([]);
+  const [addingFolder, setAddingFolder] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle",
   );
@@ -130,15 +89,60 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
+  async function handleAddFolder() {
+    setFolders((await invoke<string[]>("get_library_folders")).map(String));
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+        title: "Select Anime Folder",
+      });
+
+      if (selected && typeof selected === "string") {
+        setAddingFolder(true);
+        await invoke("add_library_folder", { path: selected });
+        // Also set as default library_folder if it's the first one
+        if (folders.length === 0) {
+          updateSetting("library_folder", selected);
+          await invoke("save_setting", {
+            key: "library_folder",
+            value: selected,
+          });
+        }
+        setFolders(await invoke<string[]>("get_library_folders"));
+      }
+    } catch (err) {
+      console.error("Failed to add folder:", err);
+    } finally {
+      setAddingFolder(false);
+    }
+  }
+
+  async function handleRemoveFolder(path: string) {
+    setFolders((await invoke<string[]>("get_library_folders")).map(String));
+    try {
+      await invoke("remove_library_folder", { path });
+      setFolders(await invoke<string[]>("get_library_folders"));
+    } catch (err) {
+      console.error("Failed to remove folder:", err);
+    }
+  }
+
   async function loadSettings() {
+    const folderList = await invoke<string[]>("get_library_folders");
+    setFolders(folderList.map(String));
     setLoading(true);
     try {
-      const all = await invoke<Record<string, string>>("get_all_settings");
+      const [all, folderList] = await Promise.all([
+        invoke<Record<string, string>>("get_all_settings"),
+        invoke<string[]>("get_library_folders"),
+      ]);
       setSettings({
         player_path: all["player_path"] ?? "",
         library_folder: all["library_folder"] ?? "",
         metadata_source: all["metadata_source"] ?? "anilist",
       });
+      setFolders(folderList);
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -282,16 +286,104 @@ export default function SettingsPage() {
       {/* ── Library ── */}
       <SettingsSection
         icon={<FolderOpen size={15} />}
-        title="Library"
-        description="Default folder to scan for anime"
+        title="Library Folders"
+        description="Anime folders to scan — add folders from different drives"
       >
-        <SettingsInput
-          label="Default Library Folder"
-          value={settings.library_folder}
-          onChange={(v) => updateSetting("library_folder", v)}
-          placeholder="e.g. E:\Videos\Anime"
-          hint="This will be pre-filled in the scan bar so you don't have to type it every time."
-        />
+        <div className="flex flex-col gap-3">
+          {/* Folder list */}
+          {folders.length === 0 ? (
+            <div
+              className="text-[11px] py-3 text-center rounded-md border
+          border-dashed"
+              style={{
+                color: "var(--text-muted)",
+                borderColor: "var(--border-subtle)",
+              }}
+            >
+              No folders added yet — click Add Folder to get started
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {folders.map((folder, i) => (
+                <div
+                  key={folder}
+                  className="flex items-center gap-3 px-3 py-2.5
+              rounded-md border"
+                  style={{
+                    background: "var(--bg-surface)",
+                    borderColor: "var(--border-subtle)",
+                  }}
+                >
+                  {/* Primary badge */}
+                  {i === 0 && (
+                    <span
+                      className="text-[9px] font-black px-1.5 py-0.5
+                  rounded tracking-wide uppercase flex-shrink-0"
+                      style={{
+                        color: "var(--accent)",
+                        background: "var(--accent-dim)",
+                      }}
+                    >
+                      Primary
+                    </span>
+                  )}
+
+                  {/* Folder icon */}
+                  <FolderOpen
+                    size={13}
+                    className="flex-shrink-0"
+                    style={{ color: "var(--text-muted)" }}
+                  />
+
+                  {/* Path */}
+                  <span
+                    className="flex-1 text-xs truncate font-mono"
+                    style={{ color: "var(--text-secondary)" }}
+                    title={folder}
+                  >
+                    {folder}
+                  </span>
+
+                  {/* Remove button */}
+                  <button
+                    onClick={() => handleRemoveFolder(folder)}
+                    className="flex-shrink-0 transition-colors p-1 rounded"
+                    style={{ color: "var(--text-muted)" }}
+                    title="Remove folder"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add folder button */}
+          <button
+            onClick={handleAddFolder}
+            disabled={addingFolder}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-md
+        border text-sm font-bold transition-all self-start
+        disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              borderColor: "var(--border-default)",
+              color: "var(--accent)",
+              background: "var(--accent-dim)",
+            }}
+          >
+            {addingFolder ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Plus size={13} />
+            )}
+            Add Folder
+          </button>
+
+          <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            The first folder is your primary scan target. All folders are
+            scanned when you click Scan Library.
+          </p>
+        </div>
       </SettingsSection>
 
       {/* ── Metadata Source ── */}

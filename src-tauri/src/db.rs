@@ -81,6 +81,13 @@ pub fn initialize_db() -> Result<Connection> {
             key    TEXT PRIMARY KEY,
             value  TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS library_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
     ",
     )?;
 
