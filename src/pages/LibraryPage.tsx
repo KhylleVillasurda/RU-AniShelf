@@ -76,72 +76,66 @@ const SORT_LABELS: Record<SortOption, string> = {
 // Strips torrent prefixes like [Vodes], [SubGroup], (1080p) etc.
 // before sending to AniList for a cleaner match
 function cleanTitleForSearch(raw: string): string {
+  const protectedAbbreviations = new Set([
+    "NHK",
+    "FBI",
+    "CIA",
+    "DNA",
+    "NYC",
+    "LA",
+    "TV",
+    "OVA",
+    "ONA",
+    "SP",
+    "BD",
+  ]);
+
   return (
     raw
-      // Handle FLAC5.1, DD5.1 etc BEFORE dot replacement
       .replace(/\b(FLAC|DD|DDP|AC3|DTS)\d*\.\d+\b/gi, "")
 
-      // Remove episode/volume ranges like 1-1006, 001-131, 1-23
+      // Remove episode ranges with dash: 1-1006, 001-131
       .replace(/\b\d{1,4}[-–]\d{1,4}\b/g, "")
 
-      // Remove "+ Movies", "+ OVA", "+ Specials" with optional numbers
-      .replace(/\+\s*(Movies?|OVA|ONA|Specials?|Films?)(\s+[\d\s-]+)?/gi, "")
+      // Remove episode ranges with tilde: "1 ~ 12", "01~24"
+      .replace(/\b\d{1,4}\s*[~～]\s*\d{1,4}\b/g, "")
 
-      // Remove batch/collection keywords
-      .replace(
-        /\b(Batch|Complete|Collection|Series|Season|Vol\.?\s*\d+)\b/gi,
-        "",
-      )
+      // Only strip + when followed by known bonus keywords
+      .replace(/\s*\+\s*(Movies?|OVA|ONA|Specials?|Films?)(\s+[\d\s-]+)?/gi, "")
 
-      // Replace dots used as separators
+      .replace(/\b(Batch|Complete|Collection|Series|Vol\.?\s*\d+)\b/gi, "")
+      .replace(/\bSeason\s*\d+\b/gi, "")
       .replace(/(?<!\.)\.(?!\.)/g, " ")
-
-      // Remove leading group tags like [Vodes], [PsyPlex]
       .replace(/^\[.*?\]\s*/g, "")
-
-      // Remove all remaining square bracket content
       .replace(/\[.*?\]/g, "")
-
-      // Remove parenthetical content like (2025)
       .replace(/\(.*?\)/g, "")
-
-      // Remove season notation: S01, S1, S01E01
       .replace(/\bS\d{1,2}(E\d{1,2})?\b/gi, "")
-
-      // Remove video quality tags
       .replace(
         /\b(1080p?|720p?|480p?|4K|2160p?|BD|BDRip|BluRay|WEBRip|WEB-DL|HDTV|DVDRIP)\b/gi,
         "",
       )
-
-      // Remove codec tags
       .replace(
-        /\b(x264|x265|HEVC|AVC|Hi10p|10bit|8bit|FLAC|AAC|DD\+?|DTS|AC3|MP3|Opus)\b/gi,
+        /\b(x264|x265|HEVC|AVC|Hi10p|10[\s-]?bits?|8[\s-]?bits?|FLAC|AAC|DD\+?|DTS|AC3|MP3|Opus)\b/gi,
         "",
       )
-
-      // Remove short uppercase release group tags (2-4 capital letters)
-      // e.g. CTR, YG, ASW — but NOT real words like BD
-      .replace(/\b(?!BD\b|BC\b)[A-Z]{2,4}\b/g, "")
-
-      // Remove release group names after trailing dash
-      .replace(/-\w+$/g, "")
-
-      // Remove audio tags
-      .replace(/\b(Dual[\s-]?Audio|Multi[\s-]?Audio|Dubbed|Subbed|RAW)\b/gi, "")
-
-      // Remove standalone 3+ digit numbers (episode numbers)
+      .replace(
+        /\b(Dual[\s-]?Audio|Multi[\s-]?Audio|Dubbed|Subbed|RAW|Eng[\s-]?Subs?|Jpn|Eng|Sub)\b/gi,
+        "",
+      )
+      .replace(/-[A-Z][A-Za-z0-9]{1,7}$/, "")
+      .replace(/\b[A-Z]{2,4}\b/g, (match) => {
+        return protectedAbbreviations.has(match) ? match : "";
+      })
       .replace(/\b\d{3,}\b/g, "")
-
-      // Remove standalone years
       .replace(/\b(19|20)\d{2}\b/g, "")
+      .replace(/\s[-_]\s/g, " ")
+      .replace(/^[-_]|[-_]$/g, " ")
 
-      // Replace dashes and underscores with spaces
-      .replace(/[-_]/g, " ")
+      // Clean up trailing/leading dots left by removals
+      .replace(/[\s.]+$/, "")
+      .replace(/^[\s.]+/, "")
 
-      // Collapse multiple spaces
       .replace(/\s+/g, " ")
-
       .trim()
   );
 }
@@ -216,6 +210,7 @@ export default function LibraryPage({
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [pendingScan, setPendingScan] = useState<ScanEntry[] | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
+  const [folders, setFolders] = useState<string[]>([]);
   const [pickerData, setPickerData] = useState<{
     results: SearchResult[];
     searchedTitle: string;
@@ -227,6 +222,20 @@ export default function LibraryPage({
     loadLibraryFromDb();
     loadSavedFolder();
   }, []);
+
+  // Load registered folders on mount
+  useEffect(() => {
+    invoke<string[]>("get_library_folders")
+      .then(setFolders)
+      .catch(console.error);
+  }, []);
+
+  // Pre-fill folder path from first registered folder if input is empty
+  useEffect(() => {
+    if (folders.length > 0 && !folderPath) {
+      setFolderPath(folders[0]);
+    }
+  }, [folders]);
 
   function showPicker(
     results: SearchResult[],
@@ -449,40 +458,51 @@ export default function LibraryPage({
   }
 
   async function handleScan() {
-    if (!folderPath.trim()) {
-      setError("Please enter your anime folder path");
-      return;
-    }
-
+    if (!folderPath.trim() && folders.length === 0) return;
     setScanning(true);
-    setError("");
 
     try {
-      const discovered = await invoke<DiscoveredSeries[]>("scan_anime_folder", {
-        path: folderPath,
-      });
+      // Get all registered folders + current input path
+      const registeredFolders = await invoke<string[]>("get_library_folders");
 
-      if (discovered.length === 0) {
-        setError("No anime found in that folder");
+      // Combine — current input path + registered folders, deduplicated
+      const allFolders = Array.from(
+        new Set([
+          ...(folderPath.trim() ? [folderPath.trim()] : []),
+          ...registeredFolders,
+        ]),
+      );
+
+      // Scan all folders
+      let allDiscovered: DiscoveredSeries[] = [];
+      for (const folder of allFolders) {
+        try {
+          const result = await invoke<DiscoveredSeries[]>("scan_anime_folder", {
+            path: folder,
+          });
+          allDiscovered = [...allDiscovered, ...result];
+        } catch (err) {
+          console.warn(`Scan failed for folder ${folder}:`, err);
+        }
+      }
+
+      if (allDiscovered.length === 0) {
+        setScanning(false);
         return;
       }
 
-      // Build entries for the confirm modal
-      const entries: ScanEntry[] = discovered.map((series) => {
-        const cleaned = cleanTitleForSearch(series.name);
-        return {
-          originalName: series.name,
-          cleanedName: cleaned,
-          editedName: cleaned,
-          path: series.path,
-          episodeCount: series.episode_files.length,
-        };
-      });
+      // Build scan entries from all discovered series
+      const entries: ScanEntry[] = allDiscovered.map((s) => ({
+        originalName: s.name,
+        cleanedName: cleanTitleForSearch(s.name),
+        editedName: cleanTitleForSearch(s.name),
+        path: s.path,
+        episodeCount: s.episode_files.length,
+      }));
 
-      // Show confirm modal with discovered series
       setPendingScan(entries);
     } catch (err) {
-      setError(`Scan error: ${err}`);
+      console.error("Scan failed:", err);
     } finally {
       setScanning(false);
     }

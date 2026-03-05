@@ -78,8 +78,9 @@ export default function ScanConfirmModal({
             </h2>
           </div>
           <p className="text-[11px] text-[#445566] pl-7">
-            Review and edit titles before fetching metadata from AniList. Click
-            the pencil icon to rename any series.
+            Review auto-cleaned titles before fetching metadata — use the{" "}
+            <span className="text-[#8899bb]">✏ pencil icon</span> to correct any
+            that look wrong.
           </p>
         </div>
 
