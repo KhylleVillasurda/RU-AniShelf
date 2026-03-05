@@ -651,7 +651,180 @@ pub fn run() {
             remove_library_folder,
             search_mal_multi,
             get_mal_client_id,
+            seed_demo_data,
+            clear_demo_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ============================================================================
+// Seeding & Demo Data (for development/testing purposes)
+// ============================================================================
+
+#[tauri::command]
+async fn seed_demo_data(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    struct DemoSeries {
+        folder_name: &'static str,
+        episode_count: i32,
+        seasons: i32,
+    }
+
+    // Folder names are intentionally "messy" like real downloads
+    // so title cleaning and the scan modal get properly exercised
+    let demo_series = vec![
+        DemoSeries {
+            folder_name: "Sousou no Frieren",
+            episode_count: 28,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "Dungeon Meshi",
+            episode_count: 24,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "[SubsPlease] Dandadan S01 1080p",
+            episode_count: 12,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "Youjo Senki [BD 1080p HEVC x265 Dual-Audio]",
+            episode_count: 12,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "The Rising of the Shield Hero S01 1080p BDRip",
+            episode_count: 25,
+            seasons: 2,
+        },
+        DemoSeries {
+            folder_name: "Golden Time [Dual Audio]",
+            episode_count: 24,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "Yofukashi no Uta S01 1080p WEBRip x265-EMBER",
+            episode_count: 13,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "Claymore.S01.720p.BluRay.x264",
+            episode_count: 26,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "[Erai-raws] Lodoss-tou Senki 01~13 [1080p]",
+            episode_count: 13,
+            seasons: 1,
+        },
+        DemoSeries {
+            folder_name: "Dragon Ball Super [BD 1080p Dual-Audio]",
+            episode_count: 131,
+            seasons: 3,
+        },
+    ];
+
+    // Create demo root inside app data — e.g. %APPDATA%\ru-anishelf\demo\
+    let mut demo_root = dirs::data_dir().ok_or("Could not find app data dir")?;
+    demo_root.push("ru-anishelf");
+    demo_root.push("demo");
+
+    if demo_root.exists() {
+        return Err("Demo folder already exists — clear it first".to_string());
+    }
+
+    std::fs::create_dir_all(&demo_root)
+        .map_err(|e| format!("Failed to create demo root: {}", e))?;
+
+    for s in &demo_series {
+        let series_dir = demo_root.join(s.folder_name);
+        let eps_per_season = s.episode_count / s.seasons;
+
+        for season in 1..=s.seasons {
+            let season_dir = if s.seasons > 1 {
+                let d = series_dir.join(format!("Season {:02}", season));
+                std::fs::create_dir_all(&d)
+                    .map_err(|e| format!("Failed to create season dir: {}", e))?;
+                d
+            } else {
+                std::fs::create_dir_all(&series_dir)
+                    .map_err(|e| format!("Failed to create series dir: {}", e))?;
+                series_dir.clone()
+            };
+
+            let season_eps = if season == s.seasons {
+                s.episode_count - (eps_per_season * (s.seasons - 1))
+            } else {
+                eps_per_season
+            };
+
+            for ep in 1..=season_eps {
+                let file_name = format!("{} - S{:02}E{:02}.mkv", s.folder_name, season, ep);
+                let file_path = season_dir.join(&file_name);
+
+                // Create empty file — scanner only needs it to exist
+                std::fs::write(&file_path, b"")
+                    .map_err(|e| format!("Failed to create episode file: {}", e))?;
+            }
+        }
+    }
+
+    // Register demo root as a library folder
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    let demo_path = demo_root.to_string_lossy().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM library_folders", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    let is_primary = if count == 0 { 1 } else { 0 };
+
+    conn.execute(
+        "INSERT OR IGNORE INTO library_folders
+            (path, is_primary, created_at)
+         VALUES (?1, ?2, ?3)",
+        rusqlite::params![demo_path, is_primary, now],
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(demo_path)
+}
+
+#[tauri::command]
+fn clear_demo_data(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let mut demo_root = dirs::data_dir().ok_or("Could not find app data dir")?;
+    demo_root.push("ru-anishelf");
+    demo_root.push("demo");
+
+    let demo_path = demo_root.to_string_lossy().to_string();
+
+    // Remove folder from disk
+    if demo_root.exists() {
+        std::fs::remove_dir_all(&demo_root)
+            .map_err(|e| format!("Failed to delete demo folder: {}", e))?;
+    }
+
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    // Remove from library_folders
+    conn.execute("DELETE FROM library_folders WHERE path = ?1", [&demo_path])
+        .map_err(|e| format!("DB error: {}", e))?;
+
+    // Remove any series scanned from demo path
+    conn.execute(
+        "DELETE FROM series WHERE local_path LIKE ?1",
+        [format!("{}%", demo_path)],
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(demo_path)
 }

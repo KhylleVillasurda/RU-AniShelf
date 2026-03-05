@@ -15,6 +15,7 @@ import {
   Plus,
   X,
   ExternalLink,
+  FlaskConical,
 } from "lucide-react";
 
 interface SettingsState {
@@ -82,6 +83,8 @@ export default function SettingsPage() {
   const { themeId, setThemeId } = useTheme();
   const [folders, setFolders] = useState<string[]>([]);
   const [addingFolder, setAddingFolder] = useState(false);
+  const [seedingDemo, setSeedingDemo] = useState(false);
+  const [clearingDemo, setClearingDemo] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle",
   );
@@ -91,6 +94,43 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  async function handleSeedDemo() {
+    if (
+      !confirm(
+        "This creates 10 fake anime folders so you can test the full scan flow. Continue?",
+      )
+    )
+      return;
+    setSeedingDemo(true);
+    try {
+      const demoPath = await invoke<string>("seed_demo_data");
+      alert(`Demo folders created!\n\nGo to Library and scan:\n${demoPath}`);
+    } catch (err: any) {
+      // If already exists, tell user to clear first
+      alert(err?.toString() ?? "Failed to create demo data");
+    } finally {
+      setSeedingDemo(false);
+    }
+  }
+
+  async function handleClearDemo() {
+    if (
+      !confirm("This will remove all demo series from your library. Continue?")
+    )
+      return;
+    setClearingDemo(true);
+    try {
+      const count = await invoke<number>("clear_demo_data");
+      setSaveStatus(count > 0 ? "success" : "idle");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch (err) {
+      console.error("Failed to clear demo data:", err);
+      setSaveStatus("error");
+    } finally {
+      setClearingDemo(false);
+    }
+  }
 
   async function handleAddFolder() {
     setFolders((await invoke<string[]>("get_library_folders")).map(String));
@@ -606,6 +646,97 @@ export default function SettingsPage() {
               );
             })}
           </div>
+        </div>
+      </SettingsSection>
+
+      {/* ── Demo Data ── */}
+      <SettingsSection
+        icon={<FlaskConical size={15} />}
+        title="Demo Data"
+        description="Populate your library with sample anime for testing"
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div
+                className="text-sm mb-0.5"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Load Demo Library
+              </div>
+              <div
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Adds 10 sample anime series with covers, genres and fake
+                episodes
+              </div>
+            </div>
+            <button
+              onClick={handleSeedDemo}
+              disabled={seedingDemo}
+              className="flex items-center gap-2 px-4 py-2 rounded-md
+          border text-xs font-bold transition-all
+          disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                borderColor: "var(--border-default)",
+                color: "var(--accent)",
+                background: "var(--accent-dim)",
+              }}
+            >
+              {seedingDemo ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <FlaskConical size={12} />
+              )}
+              {seedingDemo ? "Loading..." : "Load Demo Data"}
+            </button>
+          </div>
+
+          <div
+            className="h-px"
+            style={{ background: "var(--border-subtle)" }}
+          />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <div
+                className="text-sm mb-0.5"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Clear Demo Library
+              </div>
+              <div
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Removes all demo series — your real library is unaffected
+              </div>
+            </div>
+            <button
+              onClick={handleClearDemo}
+              disabled={clearingDemo}
+              className="flex items-center gap-2 px-4 py-2 rounded-md
+          border text-xs font-bold transition-all
+          disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                borderColor: "rgba(255,68,102,0.2)",
+                color: "#ff4466",
+              }}
+            >
+              {clearingDemo ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
+              {clearingDemo ? "Clearing..." : "Clear Demo Data"}
+            </button>
+          </div>
+
+          <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            ⚠ Demo episodes use fake file paths — playback won't work, but all
+            UI features like metadata, genres and status are fully functional.
+          </p>
         </div>
       </SettingsSection>
 
