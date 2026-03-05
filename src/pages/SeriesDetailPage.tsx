@@ -320,9 +320,12 @@ export default function SeriesDetailPage({
               {currentAnime.genres.map((g, i) => (
                 <span
                   key={i}
-                  className="px-2.5 py-0.5 rounded text-[10px]
-                  font-bold text-[#0099cc] bg-[#00d4ff]/07
-                  border border-[#00d4ff]/15"
+                  className="px-2.5 py-0.5 rounded text-[10px] font-bold"
+                  style={{
+                    color: "var(--accent)",
+                    background: "var(--accent-dim)",
+                    border: "1px solid var(--border-default)",
+                  }}
                 >
                   {g}
                 </span>

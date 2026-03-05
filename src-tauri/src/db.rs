@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, OptionalExtension, Result};
 use std::path::PathBuf;
 
 pub fn get_db_path() -> PathBuf {
@@ -176,52 +176,70 @@ pub fn upsert_series(
 ) -> Result<i64> {
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Insert or update series record
-    conn.execute(
-        "INSERT INTO series (
-            title, title_english, title_native, local_path,
-            cover_local_path, cover_remote_url, synopsis,
-            episode_count, status, anilist_id, anilist_score,
-            created_at, updated_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12)
-        ON CONFLICT(anilist_id) DO UPDATE SET
-            title = excluded.title,
-            title_english = excluded.title_english,
-            local_path = excluded.local_path,
-            cover_local_path = excluded.cover_local_path,
-            cover_remote_url = excluded.cover_remote_url,
-            synopsis = excluded.synopsis,
-            episode_count = excluded.episode_count,
-            anilist_score = excluded.anilist_score,
-            updated_at = excluded.updated_at",
-        rusqlite::params![
-            title,
-            title_english,
-            title_native,
-            local_path,
-            cover_local_path,
-            cover_remote_url,
-            synopsis,
-            episode_count,
-            status,
-            anilist_id,
-            anilist_score,
-            now
-        ],
-    )?;
-
-    let series_id: i64 = if let Some(aid) = anilist_id {
-        conn.query_row(
-            "SELECT id FROM series WHERE anilist_id = ?1",
-            [aid],
-            |row| row.get(0),
-        )?
-    } else {
-        conn.query_row(
+    // Check if series already exists by local_path — this is our stable key
+    let existing_id: Option<i64> = conn
+        .query_row(
             "SELECT id FROM series WHERE local_path = ?1",
             [local_path],
             |row| row.get(0),
-        )?
+        )
+        .optional()?;
+
+    let series_id = if let Some(id) = existing_id {
+        // Series exists — UPDATE in place, never create a duplicate
+        conn.execute(
+            "UPDATE series SET
+                title = ?1,
+                title_english = ?2,
+                title_native = ?3,
+                cover_local_path = ?4,
+                cover_remote_url = ?5,
+                synopsis = ?6,
+                episode_count = ?7,
+                anilist_id = ?8,
+                anilist_score = ?9,
+                updated_at = ?10
+             WHERE id = ?11",
+            rusqlite::params![
+                title,
+                title_english,
+                title_native,
+                cover_local_path,
+                cover_remote_url,
+                synopsis,
+                episode_count,
+                anilist_id,
+                anilist_score,
+                now,
+                id,
+            ],
+        )?;
+        id
+    } else {
+        // New series — INSERT fresh
+        conn.execute(
+            "INSERT INTO series (
+                title, title_english, title_native, local_path,
+                cover_local_path, cover_remote_url, synopsis,
+                episode_count, status, anilist_id, anilist_score,
+                created_at, updated_at
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12)",
+            rusqlite::params![
+                title,
+                title_english,
+                title_native,
+                local_path,
+                cover_local_path,
+                cover_remote_url,
+                synopsis,
+                episode_count,
+                status,
+                anilist_id,
+                anilist_score,
+                now,
+            ],
+        )?;
+        conn.last_insert_rowid()
     };
 
     // Clear and reinsert genres
@@ -232,12 +250,10 @@ pub fn upsert_series(
 
     for genre in genres {
         conn.execute("INSERT OR IGNORE INTO genres (name) VALUES (?1)", [genre])?;
-
         let genre_id: i64 =
             conn.query_row("SELECT id FROM genres WHERE name = ?1", [genre], |row| {
                 row.get(0)
             })?;
-
         conn.execute(
             "INSERT OR IGNORE INTO series_genres (series_id, genre_id)
              VALUES (?1, ?2)",
@@ -299,6 +315,7 @@ pub fn get_all_series(conn: &Connection) -> Result<Vec<SeriesRecord>> {
 }
 
 /// Checks if a series already exists in the DB by local path
+#[allow(dead_code)]
 pub fn series_exists(conn: &Connection, local_path: &str) -> Result<bool> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM series WHERE local_path = ?1",
@@ -375,6 +392,7 @@ pub struct SeriesRecord {
     pub episode_count: Option<i32>,
     pub status: String,
     pub anilist_id: Option<i64>,
+    #[allow(dead_code)]
     pub mal_id: Option<i64>,
     pub anilist_score: Option<f64>,
     pub genres: Vec<String>,

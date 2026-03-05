@@ -203,7 +203,7 @@ export default function LibraryPage({
   const [scanning, setScanning] = useState(false);
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const [error, setError] = useState("");
+  const [error] = useState("");
   const [hasLibrary, setHasLibrary] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("title_asc");
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
@@ -327,9 +327,25 @@ export default function LibraryPage({
     setFetchingMetadata(true);
     setProgress({ current: 0, total: confirmedEntries.length });
 
-    const discovered = await invoke<DiscoveredSeries[]>("scan_anime_folder", {
-      path: folderPath,
-    });
+    const registeredFolders = await invoke<string[]>("get_library_folders");
+    const allFolders = Array.from(
+      new Set([
+        ...(folderPath.trim() ? [folderPath.trim()] : []),
+        ...registeredFolders,
+      ]),
+    );
+
+    let discovered: DiscoveredSeries[] = [];
+    for (const folder of allFolders) {
+      try {
+        const result = await invoke<DiscoveredSeries[]>("scan_anime_folder", {
+          path: folder,
+        });
+        discovered = [...discovered, ...result];
+      } catch (err) {
+        console.warn(`Re-scan failed for folder ${folder}:`, err);
+      }
+    }
 
     const cards: AnimeCardData[] = []; // ← renamed from results to cards
 
@@ -374,7 +390,7 @@ export default function LibraryPage({
 
         console.log("SUCCESS: Got metadata:", meta.title);
 
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
         const allEpisodes: [number, string, string, string][] = [];
         let epNumber = 1;
