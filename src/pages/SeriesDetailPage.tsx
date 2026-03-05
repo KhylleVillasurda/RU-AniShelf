@@ -96,12 +96,14 @@ function StatusDropdown({
       {/* Dropdown menu */}
       {open && (
         <>
-          {/* Click outside to close */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
             className="absolute left-0 top-full mt-1 z-50
-            bg-[#13131f] border border-[#00d4ff]/15 rounded-md
-            overflow-hidden shadow-xl min-w-[160px]"
+        rounded-md overflow-hidden shadow-xl min-w-[160px] border"
+            style={{
+              background: "var(--bg-elevated)",
+              borderColor: "var(--border-default)",
+            }}
           >
             {(
               Object.keys(STATUS_CONFIG) as Array<keyof typeof STATUS_CONFIG>
@@ -116,10 +118,10 @@ function StatusDropdown({
                     setOpen(false);
                   }}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5
-                      text-[11px] font-bold tracking-wide uppercase
-                      transition-colors text-left"
+                text-[11px] font-bold tracking-wide uppercase
+                transition-colors text-left"
                   style={{
-                    color: isActive ? opt.color : "#667799",
+                    color: isActive ? opt.color : "var(--text-muted)",
                     background: isActive ? opt.bg : "transparent",
                   }}
                 >
@@ -244,13 +246,20 @@ export default function SeriesDetailPage({
       {/* ── Back button ── */}
       <button
         onClick={onBack}
-        className="flex items-center gap-2 text-[#8899bb] text-sm
-          hover:text-[#00d4ff] transition-colors self-start"
+        className="flex items-center gap-2 text-sm
+    transition-colors self-start"
+        style={{ color: "var(--text-secondary)" }}
+        onMouseEnter={(e) =>
+          ((e.currentTarget as HTMLElement).style.color = "var(--accent)")
+        }
+        onMouseLeave={(e) =>
+          ((e.currentTarget as HTMLElement).style.color =
+            "var(--text-secondary)")
+        }
       >
         <ArrowLeft size={15} />
         Back to Library
       </button>
-
       {/* ── Hero Section ── */}
       <div className="flex gap-6">
         {/* Cover art */}
@@ -264,45 +273,81 @@ export default function SeriesDetailPage({
             />
           ) : (
             <div
-              className="w-full aspect-[2/3] rounded-lg bg-[#13131f]
-              border border-[#00d4ff]/10 flex items-center justify-center"
+              className="w-full aspect-[2/3] rounded-lg
+          flex items-center justify-center border"
+              style={{
+                background: "var(--bg-elevated)",
+                borderColor: "var(--border-subtle)",
+              }}
             >
-              <Tv size={32} className="text-[#445566]" />
+              <Tv size={32} style={{ color: "var(--text-muted)" }} />
             </div>
           )}
         </div>
 
         {/* Series info */}
         <div className="flex flex-col gap-3 flex-1 min-w-0">
-          <div>
-            <h1 className="text-2xl font-black text-[#f0f4ff] leading-tight mb-1">
+          <div className="flex items-start gap-2">
+            <h1
+              className="text-2xl font-black leading-tight mb-1"
+              style={{
+                color: "var(--text-primary)",
+                fontFamily: "var(--font-display)",
+              }}
+            >
               {currentAnime.name}
             </h1>
+            <button
+              onClick={() => setEditingMetadata(true)}
+              className="mt-1 flex-shrink-0 transition-colors"
+              style={{ color: "var(--text-muted)" }}
+              title="Edit metadata"
+              onMouseEnter={(e) =>
+                ((e.currentTarget as HTMLElement).style.color = "var(--accent)")
+              }
+              onMouseLeave={(e) =>
+                ((e.currentTarget as HTMLElement).style.color =
+                  "var(--text-muted)")
+              }
+            >
+              <Pencil size={14} />
+            </button>
           </div>
 
           {/* Stats row */}
           <div className="flex items-center gap-3 flex-wrap">
             {/* Score */}
-            {currentAnime.score && (
+            {/* Score and episode pills */}
+            {anime.score && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
-      bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
+      text-[11px] border"
+                style={{
+                  background: "var(--bg-elevated)",
+                  borderColor: "var(--border-subtle)",
+                  color: "var(--text-secondary)",
+                }}
               >
                 <Star size={11} className="text-[#ffaa00]" />
-                <span>{currentAnime.score}</span>
-                <span className="text-[#445566]">/ 10</span>
+                <span>{anime.score}</span>
+                <span style={{ color: "var(--text-muted)" }}>/ 10</span>
               </div>
             )}
 
             {/* Episode count */}
-            {currentAnime.episodeCount && (
+            {anime.episodeCount && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
-      bg-[#13131f] border border-[#1c1c30] text-[11px] text-[#8899bb]"
+      text-[11px] border"
+                style={{
+                  background: "var(--bg-elevated)",
+                  borderColor: "var(--border-subtle)",
+                  color: "var(--text-secondary)",
+                }}
               >
                 <Tv size={11} />
-                <span>{currentAnime.episodeCount}</span>
-                <span className="text-[#445566]">episodes</span>
+                <span>{anime.episodeCount}</span>
+                <span style={{ color: "var(--text-muted)" }}>episodes</span>
               </div>
             )}
 
@@ -336,8 +381,8 @@ export default function SeriesDetailPage({
           {/* Synopsis */}
           {currentAnime.synopsis && (
             <p
-              className="text-[#8899bb] text-sm leading-relaxed
-              line-clamp-4"
+              className="text-sm leading-relaxed line-clamp-4"
+              style={{ color: "var(--text-secondary)" }}
             >
               {currentAnime.synopsis}
             </p>
@@ -363,11 +408,11 @@ export default function SeriesDetailPage({
         </button>
       </div>
 
-      {/* ── Error message ── */}
+      {/* Error message */}
       {openError && (
         <p
-          className="text-[#ff4466] text-sm bg-[#ff4466]/10
-          border border-[#ff4466]/20 rounded-md px-4 py-2"
+          className="text-sm bg-[#ff4466]/10
+    border border-[#ff4466]/20 rounded-md px-4 py-2 text-[#ff4466]"
         >
           {openError}
         </p>
@@ -376,45 +421,73 @@ export default function SeriesDetailPage({
       {/* ── Episodes Section ── */}
       <div className="flex flex-col gap-3">
         <h2
-          className="text-xs font-bold tracking-[0.15em] uppercase
-          text-[#445566]"
+          className="text-xs font-bold tracking-[0.15em] uppercase"
+          style={{ color: "var(--text-muted)" }}
         >
           Episodes
         </h2>
 
-        {currentAnime.seasons && currentAnime.seasons.length > 0 ? (
-          currentAnime.seasons.map((season) => {
+        {anime.seasons && anime.seasons.length > 0 ? (
+          anime.seasons.map((season) => {
             const isExpanded = expandedSeasons.has(season.season_name);
             return (
               <div
                 key={season.season_name}
-                className="bg-[#0e0e1a] border border-[#00d4ff]/10 rounded-lg
-                  overflow-hidden"
+                className="rounded-lg overflow-hidden border"
+                style={{
+                  background: "var(--bg-surface)",
+                  borderColor: "var(--border-subtle)",
+                }}
               >
                 {/* Season header */}
                 <button
                   onClick={() => toggleSeason(season.season_name)}
                   className="w-full flex items-center justify-between
-                    px-4 py-3 hover:bg-[#1c1c30] transition-colors"
+              px-4 py-3 transition-colors"
+                  style={{
+                    borderBottom: isExpanded
+                      ? `1px solid var(--border-subtle)`
+                      : "none",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background =
+                      "var(--accent-dim)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background =
+                      "transparent";
+                  }}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-[#f0f4ff]">
+                    <span
+                      className="text-sm font-bold"
+                      style={{ color: "var(--text-primary)" }}
+                    >
                       {season.season_name}
                     </span>
-                    <span className="text-xs text-[#445566]">
+                    <span
+                      className="text-xs"
+                      style={{ color: "var(--text-muted)" }}
+                    >
                       {season.episode_files.length} episodes
                     </span>
                   </div>
                   {isExpanded ? (
-                    <ChevronUp size={14} className="text-[#445566]" />
+                    <ChevronUp
+                      size={14}
+                      style={{ color: "var(--text-muted)" }}
+                    />
                   ) : (
-                    <ChevronDown size={14} className="text-[#445566]" />
+                    <ChevronDown
+                      size={14}
+                      style={{ color: "var(--text-muted)" }}
+                    />
                   )}
                 </button>
 
                 {/* Episode list */}
                 {isExpanded && (
-                  <div className="border-t border-[#00d4ff]/10">
+                  <div>
                     {season.episode_files.map(
                       (ep: EpisodeFileData, i: number) => {
                         const isOpening = openingFile === ep.file_name;
@@ -431,15 +504,26 @@ export default function SeriesDetailPage({
                             }
                             disabled={!!openingFile}
                             className="w-full flex items-center gap-3 px-4 py-2.5
-                            border-b border-[#00d4ff]/05 last:border-0
-                            hover:bg-[#1c1c30] transition-colors
-                            disabled:opacity-50 disabled:cursor-not-allowed
-                            group text-left"
+                      transition-colors disabled:opacity-50
+                      disabled:cursor-not-allowed group text-left"
+                            style={{
+                              borderBottom: `1px solid var(--border-subtle)`,
+                            }}
+                            onMouseEnter={(e) => {
+                              (
+                                e.currentTarget as HTMLElement
+                              ).style.background = "var(--accent-dim)";
+                            }}
+                            onMouseLeave={(e) => {
+                              (
+                                e.currentTarget as HTMLElement
+                              ).style.background = "transparent";
+                            }}
                           >
                             {/* Episode number */}
                             <span
-                              className="text-xs text-[#445566] w-6
-                            flex-shrink-0 text-right"
+                              className="text-xs w-6 flex-shrink-0 text-right"
+                              style={{ color: "var(--text-muted)" }}
                             >
                               {i + 1}
                             </span>
@@ -447,22 +531,23 @@ export default function SeriesDetailPage({
                             {/* Play icon */}
                             <div
                               className="w-6 h-6 rounded-full flex items-center
-                            justify-center bg-[#13131f] border border-[#00d4ff]/10
-                            group-hover:border-[#00d4ff]/40
-                            group-hover:bg-[#00d4ff]/10
-                            transition-all flex-shrink-0"
+                        justify-center flex-shrink-0 border transition-all"
+                              style={{
+                                background: "var(--bg-elevated)",
+                                borderColor: "var(--border-subtle)",
+                              }}
                             >
                               {isOpening ? (
                                 <Loader2
                                   size={10}
-                                  className="animate-spin text-[#00d4ff]"
+                                  className="animate-spin"
+                                  style={{ color: "var(--accent)" }}
                                 />
                               ) : (
                                 <Play
                                   size={9}
-                                  className="text-[#445566]
-                                  group-hover:text-[#00d4ff] transition-colors
-                                  ml-0.5"
+                                  className="ml-0.5"
+                                  style={{ color: "var(--text-muted)" }}
                                 />
                               )}
                             </div>
@@ -470,13 +555,15 @@ export default function SeriesDetailPage({
                             {/* Episode name */}
                             <div className="flex flex-col min-w-0 flex-1">
                               <span
-                                className="text-xs text-[#8899bb]
-                              group-hover:text-[#f0f4ff] transition-colors
-                              truncate"
+                                className="text-xs truncate transition-colors"
+                                style={{ color: "var(--text-secondary)" }}
                               >
                                 {cleanEpisodeName(ep.file_name)}
                               </span>
-                              <span className="text-[10px] text-[#445566] truncate">
+                              <span
+                                className="text-[10px] truncate"
+                                style={{ color: "var(--text-muted)" }}
+                              >
                                 {ep.file_name}
                               </span>
                             </div>
@@ -484,7 +571,8 @@ export default function SeriesDetailPage({
                             {/* File icon */}
                             <FileVideo
                               size={12}
-                              className="text-[#445566] flex-shrink-0"
+                              className="flex-shrink-0"
+                              style={{ color: "var(--text-muted)" }}
                             />
                           </button>
                         );
@@ -497,8 +585,8 @@ export default function SeriesDetailPage({
           })
         ) : (
           <div
-            className="flex items-center justify-center py-12
-            text-[#445566] text-sm"
+            className="flex items-center justify-center py-12 text-sm"
+            style={{ color: "var(--text-muted)" }}
           >
             No episode files found
           </div>
