@@ -4,6 +4,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import AnimeCard, { AnimeCardData, SeasonData } from "../components/AnimeCard";
 import { FolderOpen, Loader2, ChevronDown, RefreshCw } from "lucide-react";
 import ScanConfirmModal, { ScanEntry } from "../components/ScanConfirmModal";
+import MetadataFieldPickerModal, {
+  MalResult,
+} from "../components/MetadataFieldPickerModal";
 import AniListPickerModal, {
   SearchResult,
 } from "../components/AniListPickerModal";
@@ -211,6 +214,12 @@ export default function LibraryPage({
   const [pendingScan, setPendingScan] = useState<ScanEntry[] | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
   const [folders, setFolders] = useState<string[]>([]);
+  const [fieldPickerData, setFieldPickerData] = useState<{
+    anilist: SearchResult;
+    mal: MalResult;
+    seriesTitle: string;
+    resolve: (result: SearchResult) => void;
+  } | null>(null);
   const [pickerData, setPickerData] = useState<{
     results: SearchResult[];
     searchedTitle: string;
@@ -236,6 +245,16 @@ export default function LibraryPage({
       setFolderPath(folders[0]);
     }
   }, [folders]);
+
+  function showFieldPicker(
+    anilist: SearchResult,
+    mal: MalResult,
+    seriesTitle: string,
+  ): Promise<SearchResult> {
+    return new Promise((resolve) => {
+      setFieldPickerData({ anilist, mal, seriesTitle, resolve });
+    });
+  }
 
   function showPicker(
     results: SearchResult[],
@@ -307,9 +326,9 @@ export default function LibraryPage({
     result.sort((a, b) => {
       switch (sortBy) {
         case "title_asc":
-          return a.name.localeCompare(b.name);
+          return (a.name ?? "").localeCompare(b.name ?? "");
         case "title_desc":
-          return b.name.localeCompare(a.name);
+          return (b.name ?? "").localeCompare(a.name ?? "");
         case "score_desc":
           return (b.score ?? 0) - (a.score ?? 0);
         case "episodes_desc":
@@ -369,23 +388,87 @@ export default function LibraryPage({
       });
 
       try {
-        // Search for multiple results first
-        const searchResults = await invoke<SearchResult[]>(
-          "search_anime_multi",
-          {
-            title: entry.editedName,
-          },
-        );
+        // Get current metadata source setting
+        const metadataSource =
+          (await invoke<string | null>("get_setting", {
+            key: "metadata_source",
+          }).catch(() => null)) ?? "anilist";
 
         let meta: SearchResult;
 
-        if (searchResults.length === 1) {
-          meta = searchResults[0];
-        } else if (searchResults.length > 1) {
-          const picked = await showPicker(searchResults, entry.editedName);
-          meta = picked ?? searchResults[0];
+        if (metadataSource === "mal") {
+          // MAL only — skip AniList entirely
+          const malResults = await invoke<MalResult[]>("search_mal_multi", {
+            title: entry.editedName,
+          });
+
+          if (malResults.length === 0) {
+            throw new Error(`No MAL results found for '${entry.editedName}'`);
+          }
+
+          const malAsSearchResults: SearchResult[] = malResults.map((m) => ({
+            anilist_id: m.mal_id,
+            title: m.title,
+            title_english: m.title_english,
+            title_native: m.title_native,
+            synopsis: m.synopsis,
+            cover_url: m.cover_url,
+            anilist_score: m.mal_score,
+            episode_count: m.episode_count,
+            genres: m.genres,
+            status: m.status,
+            format: m.format,
+            season_year: m.season_year,
+          }));
+
+          const picked = await showPicker(malAsSearchResults, entry.editedName);
+          meta = picked ?? malAsSearchResults[0];
         } else {
-          throw new Error(`No results found for '${entry.editedName}'`);
+          // AniList or Both — fetch AniList first
+          const searchResults = await invoke<SearchResult[]>(
+            "search_anime_multi",
+            {
+              title: entry.editedName,
+            },
+          );
+
+          if (searchResults.length === 0) {
+            throw new Error(`No results found for '${entry.editedName}'`);
+          }
+
+          const picked = await showPicker(searchResults, entry.editedName);
+          const anilistMeta = picked ?? searchResults[0];
+
+          if (metadataSource === "anilist") {
+            // AniList only — done
+            meta = anilistMeta;
+          } else {
+            // Both — also fetch MAL and show field picker
+            try {
+              const malResults = await invoke<MalResult[]>("search_mal_multi", {
+                title: entry.editedName,
+              });
+
+              if (malResults.length === 0) {
+                console.warn(
+                  "No MAL results for merged mode, using AniList only",
+                );
+                meta = anilistMeta;
+              } else {
+                meta = await showFieldPicker(
+                  anilistMeta,
+                  malResults[0],
+                  entry.editedName,
+                );
+              }
+            } catch (malErr) {
+              console.warn(
+                "MAL fetch failed, falling back to AniList:",
+                malErr,
+              );
+              meta = anilistMeta;
+            }
+          }
         }
 
         console.log("SUCCESS: Got metadata:", meta.title);
@@ -460,8 +543,18 @@ export default function LibraryPage({
       value: folderPath,
     });
 
+    try {
+      const freshSeries = await invoke<SeriesDto[]>("get_library");
+      const freshCards = freshSeries.map(dtoToCardData);
+      setLibrary(freshCards);
+      onSeriesCountChange(freshCards.length);
+    } catch (err) {
+      console.error("Failed to reload library:", err);
+    }
+
     setFetchingMetadata(false);
   }
+
   async function handleRescan() {
     setIsRescanning(true); // ← marks this as a rescan
     setHasLibrary(false);
@@ -765,6 +858,23 @@ export default function LibraryPage({
           onCancel={() => {
             pickerData.resolve(null);
             setPickerData(null);
+          }}
+        />
+      )}
+      {/* ── Metadata Field Picker Modal (AniList + MAL merged) ── */}
+      {fieldPickerData && (
+        <MetadataFieldPickerModal
+          anilist={fieldPickerData.anilist}
+          mal={fieldPickerData.mal}
+          seriesTitle={fieldPickerData.seriesTitle}
+          onConfirm={(merged) => {
+            fieldPickerData.resolve(merged);
+            setFieldPickerData(null);
+          }}
+          onCancel={() => {
+            // On cancel fall back to AniList
+            fieldPickerData.resolve(fieldPickerData.anilist);
+            setFieldPickerData(null);
           }}
         />
       )}

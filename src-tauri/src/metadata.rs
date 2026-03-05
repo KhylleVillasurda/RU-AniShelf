@@ -2,6 +2,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 const ANILIST_URL: &str = "https://graphql.anilist.co";
+const MAL_URL: &str = "https://api.myanimelist.net/v2/anime";
 
 #[derive(Deserialize)]
 struct AniListPageResponse {
@@ -97,6 +98,71 @@ fn strip_html(input: &str) -> String {
         }
     }
     result.trim().to_string()
+}
+
+/// MAL API response structs
+#[derive(Deserialize)]
+struct MalSearchResponse {
+    data: Option<Vec<MalSearchNode>>,
+}
+
+#[derive(Deserialize)]
+struct MalSearchNode {
+    node: Option<MalAnime>,
+}
+
+#[derive(Deserialize)]
+struct MalAnime {
+    id: Option<i64>,
+    title: Option<String>,
+    main_picture: Option<MalPicture>,
+    alternative_titles: Option<MalAlternativeTitles>,
+    synopsis: Option<String>,
+    num_episodes: Option<i32>,
+    mean: Option<f64>,
+    genres: Option<Vec<MalGenre>>,
+    status: Option<String>,
+    media_type: Option<String>,
+    start_season: Option<MalSeason>,
+}
+
+#[derive(Deserialize)]
+struct MalPicture {
+    large: Option<String>,
+    medium: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MalAlternativeTitles {
+    en: Option<String>,
+    ja: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MalGenre {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct MalSeason {
+    year: Option<i32>,
+}
+
+/// MAL metadata result — mirrors SeriesMetadata shape
+#[derive(Debug, Serialize, Clone)]
+pub struct MalMetadata {
+    pub mal_id: i64,
+    pub title: String,
+    pub title_english: Option<String>,
+    pub title_native: Option<String>,
+    pub synopsis: Option<String>,
+    pub episode_count: Option<i32>,
+    pub mal_score: Option<f64>,
+    pub cover_url: Option<String>,
+    pub genres: Vec<String>,
+    pub status: Option<String>,
+    pub format: Option<String>,
+    pub season_year: Option<i32>,
 }
 
 /// Main fetch function — searches AniList by title
@@ -196,7 +262,7 @@ pub async fn fetch_anilist_metadata(title: &str) -> Result<SeriesMetadata, Strin
 pub async fn search_anime_multi(title: &str) -> Result<Vec<SeriesMetadata>, String> {
     let query = r#"
         query ($search: String) {
-            Page(perPage: 5) {
+            Page(perPage: 8) {
                 media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
                     id
                     title {
@@ -281,6 +347,90 @@ pub async fn search_anime_multi(title: &str) -> Result<Vec<SeriesMetadata>, Stri
                 status: media.status,
                 format: media.format,
                 season_year: media.season_year,
+            }
+        })
+        .collect();
+
+    Ok(results)
+}
+
+/// Searches MAL by title — returns up to 5 results
+/// Requires a MAL Client ID passed in from settings
+pub async fn search_mal_multi(title: &str, client_id: &str) -> Result<Vec<MalMetadata>, String> {
+    let client = Client::builder()
+        .use_rustls_tls()
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let url = format!(
+        "{}?q={}&limit=5&fields=id,title,alternative_titles,main_picture,\
+         synopsis,num_episodes,mean,genres,status,media_type,start_season",
+        MAL_URL,
+        urlencoding::encode(title)
+    );
+
+    let response = client
+        .get(&url)
+        .header("X-MAL-CLIENT-ID", client_id)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "MAL API error: {} — check your Client ID in Settings",
+            response.status()
+        ));
+    }
+
+    let body: MalSearchResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+
+    let nodes = body.data.unwrap_or_default();
+
+    if nodes.is_empty() {
+        return Err(format!("No MAL results found for '{}'", title));
+    }
+
+    let results = nodes
+        .into_iter()
+        .filter_map(|node| node.node)
+        .map(|anime| {
+            let title = anime.title.unwrap_or_default();
+            let title_english = anime
+                .alternative_titles
+                .as_ref()
+                .and_then(|t| t.en.clone())
+                .filter(|s| !s.is_empty());
+            let title_native = anime
+                .alternative_titles
+                .as_ref()
+                .and_then(|t| t.ja.clone())
+                .filter(|s| !s.is_empty());
+            let cover_url = anime.main_picture.and_then(|p| p.large.or(p.medium));
+            let genres = anime
+                .genres
+                .unwrap_or_default()
+                .into_iter()
+                .map(|g| g.name)
+                .collect();
+            let season_year = anime.start_season.and_then(|s| s.year);
+
+            MalMetadata {
+                mal_id: anime.id.unwrap_or(0),
+                title,
+                title_english,
+                title_native,
+                synopsis: anime.synopsis,
+                episode_count: anime.num_episodes,
+                mal_score: anime.mean,
+                cover_url,
+                genres,
+                status: anime.status,
+                format: anime.media_type,
+                season_year,
             }
         })
         .collect();

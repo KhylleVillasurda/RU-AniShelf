@@ -14,18 +14,21 @@ import {
   Trash2,
   Plus,
   X,
+  ExternalLink,
 } from "lucide-react";
 
 interface SettingsState {
   player_path: string;
   library_folder: string;
   metadata_source: string;
+  mal_client_id: string;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
   player_path: "",
   library_folder: "",
   metadata_source: "anilist",
+  mal_client_id: "",
 };
 
 // Reusable section wrapper component
@@ -141,6 +144,7 @@ export default function SettingsPage() {
         player_path: all["player_path"] ?? "",
         library_folder: all["library_folder"] ?? "",
         metadata_source: all["metadata_source"] ?? "anilist",
+        mal_client_id: all["mal_client_id"] ?? "",
       });
       setFolders(folderList);
     } catch (err) {
@@ -167,6 +171,10 @@ export default function SettingsPage() {
         invoke("save_setting", {
           key: "metadata_source",
           value: settings.metadata_source,
+        }),
+        invoke("save_setting", {
+          key: "mal_client_id",
+          value: settings.mal_client_id,
         }),
       ]);
       setSaveStatus("success");
@@ -429,6 +437,68 @@ export default function SettingsPage() {
             })}
           </div>
         </div>
+
+        {/* MAL Client ID — shown when MAL or Both is selected */}
+        {(settings.metadata_source === "mal" ||
+          settings.metadata_source === "both") && (
+          <div className="flex flex-col gap-2">
+            <label
+              style={{ color: "var(--text-secondary)" }}
+              className="text-xs font-bold tracking-wide"
+            >
+              MAL Client ID
+            </label>
+            <input
+              type="text"
+              value={settings.mal_client_id}
+              onChange={(e) => updateSetting("mal_client_id", e.target.value)}
+              placeholder="Paste your MAL Client ID here..."
+              className="border rounded-md px-3 py-2 text-sm
+            outline-none transition-colors font-mono"
+              style={{
+                background: "var(--bg-surface)",
+                borderColor: settings.mal_client_id
+                  ? "var(--border-default)"
+                  : "rgba(255,170,0,0.3)",
+                color: "var(--text-primary)",
+              }}
+            />
+            {/* Warning if empty */}
+            {!settings.mal_client_id && (
+              <div
+                className="flex items-start gap-2 px-3 py-2 rounded-md
+                  border text-[11px]"
+                style={{
+                  background: "rgba(255,170,0,0.06)",
+                  borderColor: "rgba(255,170,0,0.2)",
+                  color: "#ffaa00",
+                }}
+              >
+                <span className="flex-shrink-0">⚠</span>
+                <span>
+                  MAL Client ID required.{" "}
+                  <a
+                    href="https://myanimelist.net/apiconfig"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline inline-flex items-center gap-0.5"
+                    style={{ color: "#ffaa00" }}
+                  >
+                    Get one here
+                    <ExternalLink size={10} />
+                  </a>{" "}
+                  — App Type: other, Redirect URL: http://localhost
+                </span>
+              </div>
+            )}
+
+            {settings.mal_client_id && (
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                ✓ Client ID saved — remember to click Save Settings below.
+              </p>
+            )}
+          </div>
+        )}
       </SettingsSection>
 
       {/* ── Danger Zone ── */}
@@ -561,7 +631,8 @@ export default function SettingsPage() {
           onClick={handleSave}
           disabled={saving}
           style={{ background: "var(--accent)" }}
-          className="px-6 py-2.5 rounded-md font-bold text-sm text-[#050508]"
+          className="flex items-center gap-2 px-6 py-2.5 rounded-md
+    font-bold text-sm text-[#050508]"
         >
           {saving ? (
             <Loader2 size={14} className="animate-spin" />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, X, Check, Star, Tv, Calendar } from "lucide-react";
+import { Search, Check, Star, Tv, Calendar } from "lucide-react";
 
 interface SearchResult {
   anilist_id: number;
@@ -66,21 +66,21 @@ export default function AniListPickerModal({
               className="text-base font-black"
               style={{ color: "var(--text-primary)" }}
             >
-              Multiple Results Found
+              Select a Match
             </h2>
           </div>
           <p
             className="text-[11px] pl-7"
             style={{ color: "var(--text-muted)" }}
           >
-            Multiple anime matched
+            Showing results for{" "}
             <span
-              className="font-bold mx-1"
+              className="font-bold"
               style={{ color: "var(--text-secondary)" }}
             >
               "{searchedTitle}"
-            </span>
-            — select the correct one.
+            </span>{" "}
+            — pick the best match, first result is pre-selected.
           </p>
         </div>
 
@@ -251,7 +251,7 @@ export default function AniListPickerModal({
             className="text-xs transition-colors"
             style={{ color: "var(--text-muted)" }}
           >
-            Skip — keep existing data
+            Skip
           </button>
 
           <div className="flex gap-3">
@@ -277,7 +277,7 @@ export default function AniListPickerModal({
               }}
             >
               <Check size={13} />
-              Use This Match
+              Confirm
             </button>
           </div>
         </div>

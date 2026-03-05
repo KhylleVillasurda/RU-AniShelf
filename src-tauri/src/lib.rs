@@ -64,6 +64,22 @@ struct EpisodeDto {
     season_name: String,
 }
 
+#[derive(serde::Serialize)]
+struct MalResultDto {
+    mal_id: i64,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    mal_score: Option<f64>,
+    cover_url: Option<String>,
+    genres: Vec<String>,
+    status: Option<String>,
+    format: Option<String>,
+    season_year: Option<i32>,
+}
+
 // ============================================================================
 // LIBRARY FOLDER MANAGEMENT
 // ============================================================================
@@ -178,6 +194,57 @@ async fn search_anime_multi(title: String) -> Result<Vec<SearchResultDto>, Strin
 #[tauri::command]
 async fn fetch_metadata(title: String) -> Result<metadata::SeriesMetadata, String> {
     metadata::fetch_anilist_metadata(&title).await
+}
+
+#[tauri::command]
+async fn search_mal_multi(
+    state: tauri::State<'_, DbState>,
+    title: String,
+) -> Result<Vec<MalResultDto>, String> {
+    // Get MAL client ID from settings
+    let client_id = {
+        let conn = state
+            .0
+            .lock()
+            .map_err(|e| format!("DB lock error: {}", e))?;
+        db::get_setting(&conn, "mal_client_id")
+            .unwrap_or_default()
+            .unwrap_or_default()
+    };
+
+    if client_id.is_empty() {
+        return Err("MAL Client ID not set — add it in Settings".to_string());
+    }
+
+    let search_title = title
+        .split_whitespace()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(',', "") // ← strip commas
+        .replace('.', "") // ← strip dots
+        .trim()
+        .to_string();
+
+    let results = metadata::search_mal_multi(&search_title, &client_id).await?;
+
+    Ok(results
+        .into_iter()
+        .map(|m| MalResultDto {
+            mal_id: m.mal_id,
+            title: m.title,
+            title_english: m.title_english,
+            title_native: m.title_native,
+            synopsis: m.synopsis,
+            episode_count: m.episode_count,
+            mal_score: m.mal_score,
+            cover_url: m.cover_url,
+            genres: m.genres,
+            status: m.status,
+            format: m.format,
+            season_year: m.season_year,
+        })
+        .collect())
 }
 
 // ============================================================================
@@ -539,6 +606,17 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
     Ok(())
 }
 
+#[tauri::command]
+async fn get_mal_client_id(state: tauri::State<'_, DbState>) -> Result<String, String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    Ok(db::get_setting(&conn, "mal_client_id")
+        .unwrap_or_default()
+        .unwrap_or_default())
+}
+
 // ============================================================================
 // APP INITIALIZATION
 // ============================================================================
@@ -571,6 +649,8 @@ pub fn run() {
             get_library_folders,
             add_library_folder,
             remove_library_folder,
+            search_mal_multi,
+            get_mal_client_id,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

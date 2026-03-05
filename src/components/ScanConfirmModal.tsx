@@ -65,22 +65,34 @@ export default function ScanConfirmModal({
       bg-black/70 backdrop-blur-sm"
     >
       <div
-        className="bg-[#0e0e1a] border border-[#00d4ff]/20 rounded-xl
-        w-full max-w-2xl max-h-[80vh] flex flex-col
-        shadow-[0_20px_60px_rgba(0,0,0,0.8)]"
+        className="w-full max-w-2xl max-h-[80vh] flex flex-col
+          rounded-xl border shadow-[0_20px_60px_rgba(0,0,0,0.8)]"
+        style={{
+          background: "var(--bg-surface)",
+          borderColor: "var(--border-default)",
+        }}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#00d4ff]/10 flex-shrink-0">
+        <div
+          className="px-6 py-4 border-b flex-shrink-0"
+          style={{ borderColor: "var(--border-subtle)" }}
+        >
           <div className="flex items-center gap-3 mb-1">
-            <Search size={16} className="text-[#00d4ff]" />
-            <h2 className="text-base font-black text-[#f0f4ff]">
-              Confirm Series Titles
+            <Search size={16} style={{ color: "var(--accent)" }} />
+            <h2
+              className="text-base font-black"
+              style={{ color: "var(--text-primary)" }}
+            >
+              Review Titles
             </h2>
           </div>
-          <p className="text-[11px] text-[#445566] pl-7">
-            Review auto-cleaned titles before fetching metadata — use the{" "}
-            <span className="text-[#8899bb]">✏ pencil icon</span> to correct any
-            that look wrong.
+          <p
+            className="text-[11px] pl-7"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Titles were auto-cleaned from your folder names. Use the{" "}
+            <span style={{ color: "var(--text-secondary)" }}>✏ pencil</span> to
+            fix any before fetching metadata.
           </p>
         </div>
 
@@ -89,8 +101,11 @@ export default function ScanConfirmModal({
           {items.map((item, index) => (
             <div
               key={index}
-              className="bg-[#13131f] border border-[#00d4ff]/08
-                rounded-lg px-4 py-3"
+              className="rounded-lg px-4 py-3 border"
+              style={{
+                background: "var(--bg-elevated)",
+                borderColor: "var(--border-subtle)",
+              }}
             >
               {editingIndex === index ? (
                 /* Edit mode */
@@ -104,25 +119,36 @@ export default function ScanConfirmModal({
                       if (e.key === "Enter") confirmEdit(index);
                       if (e.key === "Escape") cancelEdit();
                     }}
-                    className="flex-1 bg-[#0e0e1a] border border-[#00d4ff]/30
-                      rounded-md px-3 py-1.5 text-sm text-[#f0f4ff]
-                      outline-none focus:border-[#00d4ff]/60"
+                    className="flex-1 rounded-md px-3 py-1.5 text-sm
+                      outline-none border transition-colors"
+                    style={{
+                      background: "var(--bg-surface)",
+                      borderColor: "var(--border-default)",
+                      color: "var(--text-primary)",
+                      fontFamily: "var(--font-body)",
+                    }}
                   />
                   <button
                     onClick={() => confirmEdit(index)}
-                    className="w-7 h-7 rounded-md bg-[#00d4ff]/15
-                      border border-[#00d4ff]/30 flex items-center
-                      justify-center text-[#00d4ff] hover:bg-[#00d4ff]/25
-                      transition-colors"
+                    className="w-7 h-7 rounded-md flex items-center
+                      justify-center border transition-colors"
+                    style={{
+                      background: "var(--accent-dim)",
+                      borderColor: "var(--border-default)",
+                      color: "var(--accent)",
+                    }}
                   >
                     <Check size={13} />
                   </button>
                   <button
                     onClick={cancelEdit}
-                    className="w-7 h-7 rounded-md bg-[#ff4466]/10
-                      border border-[#ff4466]/20 flex items-center
-                      justify-center text-[#ff4466] hover:bg-[#ff4466]/20
-                      transition-colors"
+                    className="w-7 h-7 rounded-md flex items-center
+                      justify-center border transition-colors"
+                    style={{
+                      background: "rgba(255,68,102,0.1)",
+                      borderColor: "rgba(255,68,102,0.2)",
+                      color: "#ff4466",
+                    }}
                   >
                     <X size={13} />
                   </button>
@@ -131,31 +157,57 @@ export default function ScanConfirmModal({
                 /* Display mode */
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    {/* Edited/cleaned title */}
-                    <div className="text-sm font-bold text-[#f0f4ff] truncate">
+                    <div
+                      className="text-sm font-bold truncate"
+                      style={{ color: "var(--text-primary)" }}
+                    >
                       {item.editedName}
                     </div>
-                    {/* Show original if different */}
                     {item.editedName !== item.originalName && (
-                      <div className="text-[10px] text-[#445566] truncate mt-0.5">
-                        <FolderOpen size={9} className="inline mr-1" />
+                      <div
+                        className="text-[10px] truncate mt-0.5 flex
+                          items-center gap-1"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        <FolderOpen size={9} />
                         {item.originalName}
                       </div>
                     )}
                   </div>
 
                   {/* Episode count */}
-                  <span className="text-[10px] text-[#445566] flex-shrink-0">
+                  <span
+                    className="text-[10px] flex-shrink-0"
+                    style={{ color: "var(--text-muted)" }}
+                  >
                     {item.episodeCount} ep
                   </span>
 
                   {/* Edit button */}
                   <button
-                    onClick={() => startEdit(index)}
-                    className="w-7 h-7 rounded-md border border-[#00d4ff]/10
-                      flex items-center justify-center text-[#445566]
-                      hover:border-[#00d4ff]/30 hover:text-[#00d4ff]
-                      transition-all flex-shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEdit(index);
+                    }}
+                    className="w-7 h-7 rounded-md border flex items-center
+                      justify-center transition-all flex-shrink-0"
+                    style={{
+                      borderColor: "var(--border-subtle)",
+                      color: "var(--text-muted)",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.borderColor =
+                        "var(--border-default)";
+                      (e.currentTarget as HTMLElement).style.color =
+                        "var(--accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.borderColor =
+                        "var(--border-subtle)";
+                      (e.currentTarget as HTMLElement).style.color =
+                        "var(--text-muted)";
+                    }}
+                    title="Edit title"
                   >
                     <Pencil size={11} />
                   </button>
@@ -164,10 +216,12 @@ export default function ScanConfirmModal({
                   {item.editedName !== item.cleanedName && (
                     <button
                       onClick={() => resetToOriginal(index)}
-                      className="w-7 h-7 rounded-md border border-[#445566]/20
-                        flex items-center justify-center text-[#445566]
-                        hover:border-[#445566]/40 hover:text-[#8899bb]
-                        transition-all flex-shrink-0"
+                      className="w-7 h-7 rounded-md border flex items-center
+                        justify-center transition-all flex-shrink-0"
+                      style={{
+                        borderColor: "var(--border-subtle)",
+                        color: "var(--text-muted)",
+                      }}
                       title="Reset to auto-cleaned name"
                     >
                       <X size={11} />
@@ -181,18 +235,22 @@ export default function ScanConfirmModal({
 
         {/* Footer */}
         <div
-          className="px-6 py-4 border-t border-[#00d4ff]/10
-          flex items-center justify-between flex-shrink-0"
+          className="px-6 py-4 border-t flex items-center
+            justify-between flex-shrink-0"
+          style={{ borderColor: "var(--border-subtle)" }}
         >
-          <p className="text-[11px] text-[#445566]">
-            {items.length} series ready to import
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {items.length} series found
           </p>
           <div className="flex gap-3">
             <button
               onClick={onCancel}
-              className="px-4 py-2 rounded-md border border-[#00d4ff]/10
-                text-[#8899bb] text-sm hover:border-[#00d4ff]/25
-                hover:text-[#f0f4ff] transition-all"
+              className="px-4 py-2 rounded-md border text-sm
+                transition-all"
+              style={{
+                borderColor: "var(--border-subtle)",
+                color: "var(--text-secondary)",
+              }}
             >
               Cancel
             </button>
@@ -209,8 +267,11 @@ export default function ScanConfirmModal({
                 onConfirm(finalItems);
               }}
               className="flex items-center gap-2 px-5 py-2 rounded-md
-                bg-[#00d4ff] text-[#050508] font-bold text-sm
-                hover:bg-[#00bfe8] transition-colors"
+                font-bold text-sm transition-colors"
+              style={{
+                background: "var(--accent)",
+                color: "#050508",
+              }}
             >
               <Search size={13} />
               Fetch Metadata

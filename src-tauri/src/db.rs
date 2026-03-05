@@ -186,20 +186,29 @@ pub fn upsert_series(
         .optional()?;
 
     let series_id = if let Some(id) = existing_id {
-        // Series exists — UPDATE in place, never create a duplicate
+        // Clear conflicting anilist_id from any OTHER row first
+        // This prevents UNIQUE constraint failures when anilist result changes
+        if let Some(aid) = anilist_id {
+            conn.execute(
+                "UPDATE series SET anilist_id = NULL 
+             WHERE anilist_id = ?1 AND id != ?2",
+                rusqlite::params![aid, id], // ← use id not local_path
+            )?;
+        }
+
         conn.execute(
             "UPDATE series SET
-                title = ?1,
-                title_english = ?2,
-                title_native = ?3,
-                cover_local_path = ?4,
-                cover_remote_url = ?5,
-                synopsis = ?6,
-                episode_count = ?7,
-                anilist_id = ?8,
-                anilist_score = ?9,
-                updated_at = ?10
-             WHERE id = ?11",
+            title = ?1,
+            title_english = ?2,
+            title_native = ?3,
+            cover_local_path = ?4,
+            cover_remote_url = ?5,
+            synopsis = ?6,
+            episode_count = ?7,
+            anilist_id = ?8,
+            anilist_score = ?9,
+            updated_at = ?10
+         WHERE id = ?11",
             rusqlite::params![
                 title,
                 title_english,
@@ -216,7 +225,14 @@ pub fn upsert_series(
         )?;
         id
     } else {
-        // New series — INSERT fresh
+        // Clear conflicting anilist_id from any row first
+        if let Some(aid) = anilist_id {
+            conn.execute(
+                "UPDATE series SET anilist_id = NULL 
+             WHERE anilist_id = ?1",
+                [aid],
+            )?;
+        }
         conn.execute(
             "INSERT INTO series (
                 title, title_english, title_native, local_path,
