@@ -67,12 +67,6 @@ const STATUS_CONFIG = {
   },
 };
 
-// Calculates progress percentage safely
-function getProgress(watched: number, total: number | null): number {
-  if (!total || total === 0) return 0;
-  return Math.min(Math.round((watched / total) * 100), 100);
-}
-
 export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
   return (
     <div
@@ -102,8 +96,8 @@ export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
             <ImageOff size={24} style={{ color: "var(--text-muted)" }} />
           </div>
         )}
-      </div>  {/* ← ADD THIS LINE */}
-
+      </div>{" "}
+      {/* ← ADD THIS LINE */}
       {/* Info */}
       <div className="p-2 flex flex-col gap-1">
         <h3
@@ -112,7 +106,7 @@ export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
         >
           {anime.name}
         </h3>
-        
+
         <div className="flex items-center justify-between">
           <span
             className="text-[9px] font-black uppercase tracking-wide
