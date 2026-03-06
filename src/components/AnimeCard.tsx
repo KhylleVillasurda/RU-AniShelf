@@ -6,6 +6,8 @@ import {
   ImageOff,
 } from "lucide-react";
 
+export type CardSize = "small" | "medium" | "large";
+
 export interface AnimeCardData {
   id?: number;
   name: string;
@@ -33,9 +35,9 @@ export interface EpisodeFileData {
 interface AnimeCardProps {
   anime: AnimeCardData;
   onClick?: () => void;
+  size?: CardSize;
 }
 
-// Status config — color, label and icon for each status
 const STATUS_CONFIG = {
   watching: {
     label: "Watching",
@@ -67,13 +69,43 @@ const STATUS_CONFIG = {
   },
 };
 
-// Calculates progress percentage safely
-function getProgress(watched: number, total: number | null): number {
-  if (!total || total === 0) return 0;
-  return Math.min(Math.round((watched / total) * 100), 100);
-}
+// Size-driven style tokens
+const SIZE_CONFIG: Record<
+  CardSize,
+  {
+    titleClass: string;
+    metaClass: string;
+    padding: string;
+    iconSize: number;
+  }
+> = {
+  small: {
+    titleClass: "text-[10px]",
+    metaClass: "text-[8px]",
+    padding: "p-1.5",
+    iconSize: 7,
+  },
+  medium: {
+    titleClass: "text-xs",
+    metaClass: "text-[9px]",
+    padding: "p-2",
+    iconSize: 8,
+  },
+  large: {
+    titleClass: "text-sm",
+    metaClass: "text-[10px]",
+    padding: "p-3",
+    iconSize: 10,
+  },
+};
 
-export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
+export default function AnimeCard({
+  anime,
+  onClick,
+  size = "medium",
+}: AnimeCardProps) {
+  const sc = SIZE_CONFIG[size];
+
   return (
     <div
       onClick={onClick}
@@ -83,9 +115,8 @@ export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
         borderColor: "var(--border-subtle)",
         fontFamily: "var(--font-body)",
       }}
-      className="group relative flex flex-col rounded-md
-        border overflow-hidden cursor-pointer
-        transition-all duration-200
+      className="group relative flex flex-col rounded-md border
+        overflow-hidden cursor-pointer transition-all duration-200
         hover:-translate-y-1"
     >
       {/* Cover art */}
@@ -102,21 +133,21 @@ export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
             <ImageOff size={24} style={{ color: "var(--text-muted)" }} />
           </div>
         )}
-      </div>  {/* ← ADD THIS LINE */}
+      </div>
 
       {/* Info */}
-      <div className="p-2 flex flex-col gap-1">
+      <div className={`${sc.padding} flex flex-col gap-1`}>
         <h3
-          className="text-xs font-bold leading-tight line-clamp-2"
+          className={`${sc.titleClass} font-bold leading-tight line-clamp-2`}
           style={{ color: "var(--text-primary)" }}
         >
           {anime.name}
         </h3>
-        
-        <div className="flex items-center justify-between">
+
+        <div className="flex items-center justify-between gap-1">
           <span
-            className="text-[9px] font-black uppercase tracking-wide
-              px-1.5 py-0.5 rounded"
+            className={`${sc.metaClass} font-black uppercase tracking-wide
+              px-1.5 py-0.5 rounded`}
             style={{
               color: STATUS_CONFIG[anime.status].color,
               background: STATUS_CONFIG[anime.status].bg,
@@ -126,14 +157,15 @@ export default function AnimeCard({ anime, onClick }: AnimeCardProps) {
           </span>
           {anime.genres[0] && (
             <span
-              className="text-[9px] font-bold"
+              className={`${sc.metaClass} font-bold truncate`}
               style={{ color: "var(--accent)" }}
             >
               {anime.genres[0]}
             </span>
           )}
         </div>
-        <span style={{ color: "var(--text-muted)" }} className="text-[10px]">
+
+        <span className={sc.metaClass} style={{ color: "var(--text-muted)" }}>
           {anime.episodesWatched} / {anime.episodeCount ?? "?"}
         </span>
       </div>

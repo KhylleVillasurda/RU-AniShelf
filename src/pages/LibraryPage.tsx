@@ -1,7 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import AnimeCard, { AnimeCardData, SeasonData } from "../components/AnimeCard";
+import AnimeCard, {
+  AnimeCardData,
+  SeasonData,
+  CardSize,
+} from "../components/AnimeCard";
 import { FolderOpen, Loader2, ChevronDown, RefreshCw } from "lucide-react";
 import ScanConfirmModal, { ScanEntry } from "../components/ScanConfirmModal";
 import MetadataFieldPickerModal, {
@@ -10,6 +14,8 @@ import MetadataFieldPickerModal, {
 import AniListPickerModal, {
   SearchResult,
 } from "../components/AniListPickerModal";
+
+type GridLayout = "compact" | "comfortable" | "cozy";
 
 interface EpisodeFile {
   file_name: string;
@@ -74,6 +80,12 @@ const SORT_LABELS: Record<SortOption, string> = {
   title_desc: "Title Z → A",
   score_desc: "Highest Score",
   episodes_desc: "Most Episodes",
+};
+
+const GRID_COLS: Record<GridLayout, string> = {
+  compact: "repeat(auto-fill, minmax(120px, 1fr))",
+  comfortable: "repeat(auto-fill, minmax(160px, 1fr))",
+  cozy: "repeat(auto-fill, minmax(200px, 1fr))",
 };
 
 // Strips torrent prefixes like [Vodes], [SubGroup], (1080p) etc.
@@ -214,6 +226,8 @@ export default function LibraryPage({
   const [pendingScan, setPendingScan] = useState<ScanEntry[] | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
   const [folders, setFolders] = useState<string[]>([]);
+  const [cardSize, setCardSize] = useState<CardSize>("medium");
+  const [gridLayout, setGridLayout] = useState<GridLayout>("comfortable");
   const [fieldPickerData, setFieldPickerData] = useState<{
     anilist: SearchResult;
     mal: MalResult;
@@ -230,7 +244,23 @@ export default function LibraryPage({
   useEffect(() => {
     loadLibraryFromDb();
     loadSavedFolder();
+    loadDisplaySettings();
   }, []);
+
+  async function loadDisplaySettings() {
+    try {
+      const size = await invoke<string | null>("get_setting", {
+        key: "card_size",
+      });
+      const layout = await invoke<string | null>("get_setting", {
+        key: "grid_layout",
+      });
+      if (size) setCardSize(size as CardSize);
+      if (layout) setGridLayout(layout as GridLayout);
+    } catch {
+      // use defaults
+    }
+  }
 
   // Load registered folders on mount
   useEffect(() => {
@@ -807,11 +837,18 @@ export default function LibraryPage({
       )}
 
       {/* ── Anime Grid ── */}
+
       {filtered.length > 0 && (
         <div
           className="grid gap-4"
           style={{
-            gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+            gridTemplateColumns: GRID_COLS[gridLayout],
+            gap:
+              gridLayout === "compact"
+                ? "8px"
+                : gridLayout === "comfortable"
+                  ? "16px"
+                  : "24px",
             contain: "layout style",
           }}
         >
@@ -819,6 +856,7 @@ export default function LibraryPage({
             <AnimeCard
               key={i}
               anime={anime}
+              size={cardSize}
               onClick={() => onSelectAnime(anime)}
             />
           ))}
