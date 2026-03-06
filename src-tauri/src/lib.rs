@@ -1,14 +1,38 @@
+// =============================================================================
+// lib.rs — Tauri command layer
+//
+// All public-facing commands invokable from the frontend live here.
+// This file is intentionally thin — it delegates to db.rs and metadata.rs
+// and only handles argument wiring, DTO mapping, and error formatting.
+//
+// SECTIONS (in order):
+//   1. Module Imports & State
+//   2. DTOs  (structs serialized back to the frontend)
+//   3. Library Folder Management  (add / remove / list)
+//   4. Search & Metadata          (AniList, MAL)
+//   5. Scanner                    (filesystem discovery)
+//   6. Library Management         (get, save, update series)
+//   7. Watch History              (log, get, clear)
+//   8. Settings                   (key-value store)
+//   9. Utilities                  (open episode, get MAL client ID)
+//  10. App Initialization         (Tauri builder + command registration)
+// =============================================================================
+
+// ─── 1. Module Imports & State ────────────────────────────────────────────────
+
 mod db;
 mod metadata;
 mod scanner;
 
 use std::sync::Mutex;
 
-// ============================================================================
-// STATE & DTOs
-// ============================================================================
-
+/// Shared SQLite connection wrapped in a Mutex for thread-safe Tauri state
 struct DbState(Mutex<rusqlite::Connection>);
+
+// ─── 2. DTOs ─────────────────────────────────────────────────────────────────
+// These mirror the DB structs in db.rs but are serialized to JSON for the
+// frontend. Keep field names in snake_case — Tauri handles the camelCase
+// conversion on the JS side automatically.
 
 #[derive(serde::Serialize)]
 struct SearchResultDto {
@@ -80,9 +104,7 @@ struct MalResultDto {
     season_year: Option<i32>,
 }
 
-// ============================================================================
-// LIBRARY FOLDER MANAGEMENT
-// ============================================================================
+// ─── 3. Library Folder Management ────────────────────────────────────────────
 
 #[tauri::command]
 async fn get_library_folders(state: tauri::State<'_, DbState>) -> Result<Vec<String>, String> {
@@ -143,7 +165,7 @@ async fn remove_library_folder(
     conn.execute("DELETE FROM library_folders WHERE path = ?1", [path])
         .map_err(|e| format!("DB error: {}", e))?;
 
-    // If no primary remains, promote the first folder
+    // If no primary remains, promote the oldest remaining folder
     let primary_count: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM library_folders WHERE is_primary = 1",
@@ -164,10 +186,9 @@ async fn remove_library_folder(
     Ok(())
 }
 
-// ============================================================================
-// SEARCH & METADATA
-// ============================================================================
+// ─── 4. Search & Metadata ─────────────────────────────────────────────────────
 
+/// Searches AniList for multiple results and returns them as SearchResultDtos
 #[tauri::command]
 async fn search_anime_multi(title: String) -> Result<Vec<SearchResultDto>, String> {
     let results = metadata::search_anime_multi(&title).await?;
@@ -191,17 +212,18 @@ async fn search_anime_multi(title: String) -> Result<Vec<SearchResultDto>, Strin
         .collect())
 }
 
+/// Single best-match AniList fetch (used by MetadataEditModal)
 #[tauri::command]
 async fn fetch_metadata(title: String) -> Result<metadata::SeriesMetadata, String> {
     metadata::fetch_anilist_metadata(&title).await
 }
 
+/// Searches MAL for multiple results — requires a MAL Client ID in settings
 #[tauri::command]
 async fn search_mal_multi(
     state: tauri::State<'_, DbState>,
     title: String,
 ) -> Result<Vec<MalResultDto>, String> {
-    // Get MAL client ID from settings
     let client_id = {
         let conn = state
             .0
@@ -216,13 +238,14 @@ async fn search_mal_multi(
         return Err("MAL Client ID not set — add it in Settings".to_string());
     }
 
+    // Trim to first 4 words and strip punctuation for cleaner MAL queries
     let search_title = title
         .split_whitespace()
         .take(4)
         .collect::<Vec<_>>()
         .join(" ")
-        .replace(',', "") // ← strip commas
-        .replace('.', "") // ← strip dots
+        .replace(',', "")
+        .replace('.', "")
         .trim()
         .to_string();
 
@@ -247,19 +270,17 @@ async fn search_mal_multi(
         .collect())
 }
 
-// ============================================================================
-// SCANNER
-// ============================================================================
+// ─── 5. Scanner ───────────────────────────────────────────────────────────────
 
+/// Scans a folder path for anime series and returns discovered entries
 #[tauri::command]
 fn scan_anime_folder(path: String) -> Vec<scanner::DiscoveredSeries> {
     scanner::scan_folder(&path)
 }
 
-// ============================================================================
-// LIBRARY MANAGEMENT
-// ============================================================================
+// ─── 6. Library Management ───────────────────────────────────────────────────
 
+/// Returns all series from the DB with their episodes, for the library grid
 #[tauri::command]
 async fn get_library(state: tauri::State<'_, DbState>) -> Result<Vec<SeriesDto>, String> {
     let conn = state
@@ -269,9 +290,7 @@ async fn get_library(state: tauri::State<'_, DbState>) -> Result<Vec<SeriesDto>,
     let series = db::get_all_series(&conn).map_err(|e| format!("DB error: {}", e))?;
 
     let mut result = Vec::new();
-
     for s in series {
-        // Load episodes for each series
         let episodes = db::get_episodes(&conn, s.id)
             .map_err(|e| format!("DB error: {}", e))?
             .into_iter()
@@ -304,6 +323,10 @@ async fn get_library(state: tauri::State<'_, DbState>) -> Result<Vec<SeriesDto>,
     Ok(result)
 }
 
+/// Inserts or updates a series and its episodes in the DB.
+/// Downloads and caches cover art locally.
+/// force_refresh = true re-downloads the cover even if already cached
+/// (used during rescan to pick up cover changes from a different source).
 #[tauri::command]
 async fn save_series_to_library(
     state: tauri::State<'_, DbState>,
@@ -317,11 +340,12 @@ async fn save_series_to_library(
     anilist_id: Option<i64>,
     anilist_score: Option<f64>,
     genres: Vec<String>,
-    // Each episode: [episode_number, file_path, file_name, season_name]
+    force_refresh: bool,
+    // Each episode: (episode_number, file_path, file_name, season_name)
     episodes: Vec<(i32, String, String, String)>,
 ) -> Result<i64, String> {
     let cover_local_path = if let Some(ref url) = cover_remote_url {
-        match metadata::download_cover(url, &title).await {
+        match metadata::download_cover(url, &title, force_refresh).await {
             Ok(path) => Some(path),
             Err(_) => None,
         }
@@ -351,7 +375,6 @@ async fn save_series_to_library(
     )
     .map_err(|e| format!("DB error: {}", e))?;
 
-    // Save episodes
     let episode_refs: Vec<(i32, &str, &str, &str)> = episodes
         .iter()
         .map(|(n, fp, fn_, sn)| (*n, fp.as_str(), fn_.as_str(), sn.as_str()))
@@ -362,6 +385,8 @@ async fn save_series_to_library(
     Ok(series_id)
 }
 
+/// Updates metadata for an existing series (title, cover, synopsis, genres, etc.).
+/// Always force-refreshes the cover so switching source is reflected immediately.
 #[tauri::command]
 async fn update_series_metadata(
     state: tauri::State<'_, DbState>,
@@ -376,9 +401,9 @@ async fn update_series_metadata(
     anilist_score: Option<f64>,
     genres: Vec<String>,
 ) -> Result<(), String> {
-    // Re-download cover art with new URL
+    // Always force-refresh the cover on a manual edit
     let cover_local_path = if let Some(ref url) = cover_remote_url {
-        match metadata::download_cover(url, &title).await {
+        match metadata::download_cover(url, &title, true).await {
             Ok(path) => Some(path),
             Err(_) => None,
         }
@@ -422,7 +447,7 @@ async fn update_series_metadata(
     )
     .map_err(|e| format!("DB error: {}", e))?;
 
-    // Update genres — clear and reinsert
+    // Clear and reinsert genres
     conn.execute(
         "DELETE FROM series_genres WHERE series_id = ?1",
         [series_id],
@@ -450,6 +475,7 @@ async fn update_series_metadata(
     Ok(())
 }
 
+/// Updates only the watch status (watching / completed / on_hold / plan_to_watch)
 #[tauri::command]
 async fn update_series_status(
     state: tauri::State<'_, DbState>,
@@ -463,10 +489,9 @@ async fn update_series_status(
     db::update_series_status(&conn, series_id, &status).map_err(|e| format!("DB error: {}", e))
 }
 
-// ============================================================================
-// WATCH HISTORY
-// ============================================================================
+// ─── 7. Watch History ─────────────────────────────────────────────────────────
 
+/// Appends an episode watch event to the history table
 #[tauri::command]
 fn log_watch_event(
     state: tauri::State<DbState>,
@@ -495,6 +520,7 @@ fn log_watch_event(
     .map_err(|e| format!("DB error: {}", e))
 }
 
+/// Returns the most recent watch events up to `limit`
 #[tauri::command]
 fn get_history(state: tauri::State<DbState>, limit: i32) -> Result<Vec<WatchEventDto>, String> {
     let conn = state
@@ -518,6 +544,7 @@ fn get_history(state: tauri::State<DbState>, limit: i32) -> Result<Vec<WatchEven
         .collect())
 }
 
+/// Wipes the entire watch history table
 #[tauri::command]
 fn clear_history(state: tauri::State<DbState>) -> Result<(), String> {
     let conn = state
@@ -527,10 +554,9 @@ fn clear_history(state: tauri::State<DbState>) -> Result<(), String> {
     db::clear_watch_history(&conn).map_err(|e| format!("DB error: {}", e))
 }
 
-// ============================================================================
-// SETTINGS
-// ============================================================================
+// ─── 8. Settings ──────────────────────────────────────────────────────────────
 
+/// Upserts a single key-value setting
 #[tauri::command]
 fn save_setting(state: tauri::State<DbState>, key: String, value: String) -> Result<(), String> {
     let conn = state
@@ -540,6 +566,7 @@ fn save_setting(state: tauri::State<DbState>, key: String, value: String) -> Res
     db::save_setting(&conn, &key, &value).map_err(|e| format!("DB error: {}", e))
 }
 
+/// Returns a single setting by key, or None if not set
 #[tauri::command]
 fn get_setting(state: tauri::State<DbState>, key: String) -> Result<Option<String>, String> {
     let conn = state
@@ -549,6 +576,7 @@ fn get_setting(state: tauri::State<DbState>, key: String) -> Result<Option<Strin
     db::get_setting(&conn, &key).map_err(|e| format!("DB error: {}", e))
 }
 
+/// Returns all settings as a key-value map (used on the Settings page)
 #[tauri::command]
 fn get_all_settings(
     state: tauri::State<DbState>,
@@ -573,10 +601,9 @@ fn get_all_settings(
     Ok(map)
 }
 
-// ============================================================================
-// UTILITIES
-// ============================================================================
+// ─── 9. Utilities ─────────────────────────────────────────────────────────────
 
+/// Opens an episode file in the configured media player, or the OS default
 #[tauri::command]
 async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Result<(), String> {
     let player_path = {
@@ -589,16 +616,13 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
 
     match player_path {
         Some(player) if !player.trim().is_empty() => {
-            // Trim whitespace from saved player path
             let player = player.trim().to_string();
-
             std::process::Command::new(&player)
                 .arg(&file_path)
                 .spawn()
                 .map_err(|e| format!("Failed to launch player '{}': {}", player, e))?;
         }
         _ => {
-            // Fall back to OS default
             opener::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         }
     }
@@ -606,6 +630,7 @@ async fn open_episode(state: tauri::State<'_, DbState>, file_path: String) -> Re
     Ok(())
 }
 
+/// Returns the saved MAL Client ID from settings (empty string if not set)
 #[tauri::command]
 async fn get_mal_client_id(state: tauri::State<'_, DbState>) -> Result<String, String> {
     let conn = state
@@ -617,9 +642,7 @@ async fn get_mal_client_id(state: tauri::State<'_, DbState>) -> Result<String, S
         .unwrap_or_default())
 }
 
-// ============================================================================
-// APP INITIALIZATION
-// ============================================================================
+// ─── 10. App Initialization ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -630,26 +653,33 @@ pub fn run() {
     tauri::Builder::default()
         .manage(DbState(Mutex::new(conn)))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init()) // ← add this
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            // Scanner
             scan_anime_folder,
+            // Metadata
             fetch_metadata,
-            open_episode,
-            log_watch_event,
-            get_history,
-            save_setting,
-            get_setting,
-            get_all_settings,
-            clear_history,
+            search_anime_multi,
+            search_mal_multi,
+            // Library
             get_library,
             save_series_to_library,
-            update_series_status,
-            search_anime_multi,
             update_series_metadata,
+            update_series_status,
+            // Library folders
             get_library_folders,
             add_library_folder,
             remove_library_folder,
-            search_mal_multi,
+            // Watch history
+            log_watch_event,
+            get_history,
+            clear_history,
+            // Settings
+            save_setting,
+            get_setting,
+            get_all_settings,
+            // Utilities
+            open_episode,
             get_mal_client_id,
             seed_demo_data,
             clear_demo_data,

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimeCardData, EpisodeFileData } from "../components/AnimeCard";
 import { SearchResult } from "../components/AniListPickerModal";
@@ -18,10 +19,24 @@ import {
   Pencil,
 } from "lucide-react";
 
+/** Matches the SeriesDto returned by the get_library Tauri command */
+interface SeriesDto {
+  id: number;
+  title: string;
+  cover_local_path: string | null;
+  cover_remote_url: string | null;
+  synopsis: string | null;
+  episode_count: number | null;
+  anilist_score: number | null;
+  genres: string[];
+}
+
 interface SeriesDetailPageProps {
   anime: AnimeCardData;
   onBack: () => void;
   onStatusUpdate?: (id: number, status: AnimeCardData["status"]) => void;
+  /** Called after metadata is saved so the parent card in the library grid updates too */
+  onMetadataUpdate?: (id: number, updated: AnimeCardData) => void;
 }
 
 interface StatusDropdownProps {
@@ -146,6 +161,7 @@ export default function SeriesDetailPage({
   anime,
   onBack,
   onStatusUpdate,
+  onMetadataUpdate,
 }: SeriesDetailPageProps) {
   const [editingMetadata, setEditingMetadata] = useState(false);
   const [currentAnime, setCurrentAnime] = useState(anime);
@@ -160,16 +176,70 @@ export default function SeriesDetailPage({
   const [openingFile, setOpeningFile] = useState<string | null>(null);
   const [openError, setOpenError] = useState("");
 
-  function handleMetadataSaved(result: SearchResult) {
-    setCurrentAnime((prev) => ({
-      ...prev,
-      name: result.title,
-      coverUrl: result.cover_url,
-      synopsis: result.synopsis ?? undefined,
-      episodeCount: result.episode_count,
-      score: result.anilist_score ?? undefined,
-      genres: result.genres,
-    }));
+  async function handleMetadataSaved(result: SearchResult) {
+    // Reload the full library from DB so we get the canonical cover_local_path
+    // that was written by update_series_metadata (download_cover runs server-side).
+    // Using result.cover_url (remote) directly won't work — Tauri's CSP blocks
+    // arbitrary remote image URLs, which is why the cover appears broken until restart.
+    try {
+      const series = await invoke<SeriesDto[]>("get_library");
+      const updated = series.find((s) => s.id === currentAnime.id);
+
+      if (updated) {
+        // Prefer the local cached cover, fall back to remote
+        const coverUrl =
+          (updated.cover_local_path
+            ? (() => {
+                try {
+                  return convertFileSrc(updated.cover_local_path!);
+                } catch {
+                  return null;
+                }
+              })()
+            : null) ??
+          updated.cover_remote_url ??
+          result.cover_url;
+
+        const updatedCard: AnimeCardData = {
+          ...currentAnime,
+          name: updated.title,
+          coverUrl,
+          coverCacheBust: Date.now(), // bust browser cache — cover file was overwritten
+          synopsis: updated.synopsis ?? undefined,
+          episodeCount: updated.episode_count,
+          score: updated.anilist_score ?? undefined,
+          genres: updated.genres,
+        };
+
+        setCurrentAnime(updatedCard);
+        // Propagate to library grid so the card updates without a restart
+        if (currentAnime.id) onMetadataUpdate?.(currentAnime.id, updatedCard);
+      } else {
+        // Fallback: update local state from result if DB reload fails
+        setCurrentAnime((prev) => ({
+          ...prev,
+          name: result.title,
+          coverUrl: result.cover_url,
+          synopsis: result.synopsis ?? undefined,
+          episodeCount: result.episode_count,
+          score: result.anilist_score ?? undefined,
+          genres: result.genres,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to reload series after metadata save:", err);
+      // Still update local state so the UI isn't stale
+      setCurrentAnime((prev) => ({
+        ...prev,
+        name: result.title,
+        coverUrl: result.cover_url,
+        synopsis: result.synopsis ?? undefined,
+        episodeCount: result.episode_count,
+        score: result.anilist_score ?? undefined,
+        genres: result.genres,
+      }));
+    }
+
     setEditingMetadata(false);
   }
 
@@ -269,7 +339,7 @@ export default function SeriesDetailPage({
               src={currentAnime.coverUrl}
               alt={currentAnime.name}
               className="w-full rounded-lg border border-[#00d4ff]/15
-                shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+          shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
             />
           ) : (
             <div
@@ -316,12 +386,10 @@ export default function SeriesDetailPage({
 
           {/* Stats row */}
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Score */}
-            {/* Score and episode pills */}
-            {anime.score && (
+            {currentAnime.score && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
-      text-[11px] border"
+            text-[11px] border"
                 style={{
                   background: "var(--bg-elevated)",
                   borderColor: "var(--border-subtle)",
@@ -329,16 +397,15 @@ export default function SeriesDetailPage({
                 }}
               >
                 <Star size={11} className="text-[#ffaa00]" />
-                <span>{anime.score}</span>
+                <span>{currentAnime.score}</span>
                 <span style={{ color: "var(--text-muted)" }}>/ 10</span>
               </div>
             )}
 
-            {/* Episode count */}
-            {anime.episodeCount && (
+            {currentAnime.episodeCount && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md
-      text-[11px] border"
+            text-[11px] border"
                 style={{
                   background: "var(--bg-elevated)",
                   borderColor: "var(--border-subtle)",
@@ -346,12 +413,11 @@ export default function SeriesDetailPage({
                 }}
               >
                 <Tv size={11} />
-                <span>{anime.episodeCount}</span>
+                <span>{currentAnime.episodeCount}</span>
                 <span style={{ color: "var(--text-muted)" }}>episodes</span>
               </div>
             )}
 
-            {/* Status dropdown */}
             <StatusDropdown
               currentStatus={currentStatus}
               onStatusChange={handleStatusChange}
@@ -388,24 +454,6 @@ export default function SeriesDetailPage({
             </p>
           )}
         </div>
-      </div>
-
-      {/* Edit Metadata Button */}
-      <div className="flex items-start gap-2">
-        <h1
-          className="text-2xl font-black leading-tight mb-1"
-          style={{ color: "var(--text-primary)" }}
-        >
-          {currentAnime.name}
-        </h1>
-        <button
-          onClick={() => setEditingMetadata(true)}
-          className="mt-1 flex-shrink-0 transition-colors"
-          style={{ color: "var(--text-muted)" }}
-          title="Edit metadata"
-        >
-          <Pencil size={14} />
-        </button>
       </div>
 
       {/* Error message */}
@@ -528,10 +576,10 @@ export default function SeriesDetailPage({
                               {i + 1}
                             </span>
 
-                            {/* Play icon */}
+                            {/* Play icon — properly centered */}
                             <div
                               className="w-6 h-6 rounded-full flex items-center
-                        justify-center flex-shrink-0 border transition-all"
+                              justify-center flex-shrink-0 border transition-all"
                               style={{
                                 background: "var(--bg-elevated)",
                                 borderColor: "var(--border-subtle)",
@@ -546,8 +594,12 @@ export default function SeriesDetailPage({
                               ) : (
                                 <Play
                                   size={9}
-                                  className="ml-0.5"
-                                  style={{ color: "var(--text-muted)" }}
+                                  style={{
+                                    color: "var(--text-muted)",
+                                    // SVG play icons are visually left-heavy
+                                    // a 1px nudge gives true optical center
+                                    transform: "translateX(1px)",
+                                  }}
                                 />
                               )}
                             </div>
