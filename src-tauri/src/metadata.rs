@@ -440,7 +440,11 @@ pub async fn search_mal_multi(title: &str, client_id: &str) -> Result<Vec<MalMet
 
 /// Downloads a cover image and saves it locally
 /// Returns the local file path
-pub async fn download_cover(cover_url: &str, series_title: &str) -> Result<String, String> {
+pub async fn download_cover(
+    cover_url: &str,
+    series_title: &str,
+    force_refresh: bool,
+) -> Result<String, String> {
     // Build the local covers directory path
     let mut covers_dir = dirs::data_dir().ok_or("Could not find app data directory")?;
     covers_dir.push("ru-anishelf");
@@ -465,8 +469,9 @@ pub async fn download_cover(cover_url: &str, series_title: &str) -> Result<Strin
     let file_name = format!("{}.jpg", safe_title);
     let file_path = covers_dir.join(&file_name);
 
-    // Skip download if already cached
-    if file_path.exists() {
+    // Skip download if already cached — unless force_refresh is set
+    // (e.g. when rescanning with a different metadata source)
+    if file_path.exists() && !force_refresh {
         return Ok(file_path.to_string_lossy().to_string());
     }
 
