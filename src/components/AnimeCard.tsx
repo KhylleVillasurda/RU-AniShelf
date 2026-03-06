@@ -12,6 +12,13 @@ export interface AnimeCardData {
   id?: number;
   name: string;
   coverUrl: string | null;
+  /**
+   * Set to Date.now() after a metadata save to bust the browser's image cache.
+   * The browser caches cover art by URL — since download_cover overwrites the
+   * same filename, the URL never changes and the old image keeps showing.
+   * Appending ?t=<timestamp> forces a fresh fetch without changing the file path.
+   */
+  coverCacheBust?: number;
   status: "watching" | "completed" | "on_hold" | "plan_to_watch";
   episodesWatched: number;
   episodeCount: number | null;
@@ -123,7 +130,11 @@ export default function AnimeCard({
       <div className="relative aspect-[2/3] overflow-hidden bg-[#0a0a0f]">
         {anime.coverUrl ? (
           <img
-            src={anime.coverUrl}
+            src={
+              anime.coverCacheBust
+                ? `${anime.coverUrl}?t=${anime.coverCacheBust}`
+                : anime.coverUrl
+            }
             alt={anime.name}
             className="w-full h-full object-cover
               group-hover:scale-105 transition-transform duration-500"

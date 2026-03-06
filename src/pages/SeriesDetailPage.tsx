@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimeCardData, EpisodeFileData } from "../components/AnimeCard";
 import { SearchResult } from "../components/AniListPickerModal";
@@ -18,10 +19,24 @@ import {
   Pencil,
 } from "lucide-react";
 
+/** Matches the SeriesDto returned by the get_library Tauri command */
+interface SeriesDto {
+  id: number;
+  title: string;
+  cover_local_path: string | null;
+  cover_remote_url: string | null;
+  synopsis: string | null;
+  episode_count: number | null;
+  anilist_score: number | null;
+  genres: string[];
+}
+
 interface SeriesDetailPageProps {
   anime: AnimeCardData;
   onBack: () => void;
   onStatusUpdate?: (id: number, status: AnimeCardData["status"]) => void;
+  /** Called after metadata is saved so the parent card in the library grid updates too */
+  onMetadataUpdate?: (id: number, updated: AnimeCardData) => void;
 }
 
 interface StatusDropdownProps {
@@ -146,6 +161,7 @@ export default function SeriesDetailPage({
   anime,
   onBack,
   onStatusUpdate,
+  onMetadataUpdate,
 }: SeriesDetailPageProps) {
   const [editingMetadata, setEditingMetadata] = useState(false);
   const [currentAnime, setCurrentAnime] = useState(anime);
@@ -160,16 +176,70 @@ export default function SeriesDetailPage({
   const [openingFile, setOpeningFile] = useState<string | null>(null);
   const [openError, setOpenError] = useState("");
 
-  function handleMetadataSaved(result: SearchResult) {
-    setCurrentAnime((prev) => ({
-      ...prev,
-      name: result.title,
-      coverUrl: result.cover_url,
-      synopsis: result.synopsis ?? undefined,
-      episodeCount: result.episode_count,
-      score: result.anilist_score ?? undefined,
-      genres: result.genres,
-    }));
+  async function handleMetadataSaved(result: SearchResult) {
+    // Reload the full library from DB so we get the canonical cover_local_path
+    // that was written by update_series_metadata (download_cover runs server-side).
+    // Using result.cover_url (remote) directly won't work — Tauri's CSP blocks
+    // arbitrary remote image URLs, which is why the cover appears broken until restart.
+    try {
+      const series = await invoke<SeriesDto[]>("get_library");
+      const updated = series.find((s) => s.id === currentAnime.id);
+
+      if (updated) {
+        // Prefer the local cached cover, fall back to remote
+        const coverUrl =
+          (updated.cover_local_path
+            ? (() => {
+                try {
+                  return convertFileSrc(updated.cover_local_path!);
+                } catch {
+                  return null;
+                }
+              })()
+            : null) ??
+          updated.cover_remote_url ??
+          result.cover_url;
+
+        const updatedCard: AnimeCardData = {
+          ...currentAnime,
+          name: updated.title,
+          coverUrl,
+          coverCacheBust: Date.now(), // bust browser cache — cover file was overwritten
+          synopsis: updated.synopsis ?? undefined,
+          episodeCount: updated.episode_count,
+          score: updated.anilist_score ?? undefined,
+          genres: updated.genres,
+        };
+
+        setCurrentAnime(updatedCard);
+        // Propagate to library grid so the card updates without a restart
+        if (currentAnime.id) onMetadataUpdate?.(currentAnime.id, updatedCard);
+      } else {
+        // Fallback: update local state from result if DB reload fails
+        setCurrentAnime((prev) => ({
+          ...prev,
+          name: result.title,
+          coverUrl: result.cover_url,
+          synopsis: result.synopsis ?? undefined,
+          episodeCount: result.episode_count,
+          score: result.anilist_score ?? undefined,
+          genres: result.genres,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to reload series after metadata save:", err);
+      // Still update local state so the UI isn't stale
+      setCurrentAnime((prev) => ({
+        ...prev,
+        name: result.title,
+        coverUrl: result.cover_url,
+        synopsis: result.synopsis ?? undefined,
+        episodeCount: result.episode_count,
+        score: result.anilist_score ?? undefined,
+        genres: result.genres,
+      }));
+    }
+
     setEditingMetadata(false);
   }
 

@@ -94,6 +94,19 @@ interface LibraryPageProps {
   statusFilter?: StatusFilter;
   onSelectAnime: (anime: AnimeCardData) => void;
   statusUpdates: Record<number, AnimeCardData["status"]>;
+  /**
+   * Increment this number from the parent whenever SeriesDetailPage saves
+   * metadata. LibraryPage will reload from DB and refresh the affected card.
+   *
+   * In App.tsx:
+   *   const [libraryReloadTrigger, setLibraryReloadTrigger] = useState(0);
+   *   <LibraryPage reloadTrigger={libraryReloadTrigger} ... />
+   *   <SeriesDetailPage
+   *     onMetadataUpdate={() => setLibraryReloadTrigger((n) => n + 1)}
+   *     ...
+   *   />
+   */
+  reloadTrigger?: number;
 }
 
 // ─── 3. Constants ─────────────────────────────────────────────────────────────
@@ -236,6 +249,7 @@ export default function LibraryPage({
   statusFilter = "all",
   onSelectAnime,
   statusUpdates,
+  reloadTrigger,
 }: LibraryPageProps) {
   // ── 5a. State ──────────────────────────────────────────────────────────────
 
@@ -295,6 +309,27 @@ export default function LibraryPage({
       setFolderPath(folders[0]);
     }
   }, [folders]);
+
+  // Reload library from DB when the parent signals a metadata update
+  // (e.g. after SeriesDetailPage saves new metadata — picks up the new local cover path)
+  useEffect(() => {
+    if (reloadTrigger && reloadTrigger > 0) {
+      // Load fresh data and stamp a cache-bust on every card's cover so the
+      // browser doesn't serve stale images from its cache
+      invoke<SeriesDto[]>("get_library")
+        .then((series) => {
+          const bust = Date.now();
+          const cards = series.map((dto) => ({
+            ...dtoToCardData(dto),
+            coverCacheBust: bust,
+          }));
+          setLibrary(cards);
+          onSeriesCountChange(cards.length);
+          if (cards.length > 0) setHasLibrary(true);
+        })
+        .catch(console.error);
+    }
+  }, [reloadTrigger]);
 
   /** Loads all series from SQLite and populates the library grid. */
   async function loadLibraryFromDb() {

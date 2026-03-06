@@ -211,6 +211,14 @@ export default function MetadataEditModal({
                   ? 'Try the Japanese title for better MAL results. e.g. "Azumanga Daioh" instead of "Azumanga Daiou"'
                   : 'Try the Japanese title if the English one doesn\'t match. e.g. "Tate no Yuusha" instead of "Rising of the Shield Hero"'}
               </p>
+              {/* Shown while the user has time to read — before they hit Search */}
+              <p
+                className="text-[10px] italic"
+                style={{ color: "var(--text-muted)", opacity: 0.6 }}
+              >
+                Cover art and info may take a few seconds to update after
+                saving.
+              </p>
             </div>
 
             {/* Saving state */}
