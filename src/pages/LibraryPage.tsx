@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import SkeletonCard from "../components/SkeletonCard";
 import AnimeCard, {
   AnimeCardData,
   SeasonData,
@@ -733,8 +734,18 @@ export default function LibraryPage({
               {/* Rescan button */}
               <button
                 onClick={handleRescan}
-                className="flex items-center gap-1.5 text-xs
-                  text-[#445566] hover:text-[#00d4ff] transition-colors"
+                className="flex items-center gap-1.5 text-xs transition-colors"
+                style={{
+                  color: "var(--text-muted)",
+                }}
+                onMouseEnter={(e) =>
+                  ((e.currentTarget as HTMLElement).style.color =
+                    "var(--accent)")
+                }
+                onMouseLeave={(e) =>
+                  ((e.currentTarget as HTMLElement).style.color =
+                    "var(--text-muted)")
+                }
               >
                 <RefreshCw size={11} />
                 Rescan
@@ -836,11 +847,10 @@ export default function LibraryPage({
         </div>
       )}
 
-      {/* ── Anime Grid ── */}
-
-      {filtered.length > 0 && (
+      {/* ── Anime Grid — real cards + skeletons during fetch ── */}
+      {(filtered.length > 0 || fetchingMetadata) && (
         <div
-          className="grid gap-4"
+          className="grid"
           style={{
             gridTemplateColumns: GRID_COLS[gridLayout],
             gap:
@@ -852,14 +862,26 @@ export default function LibraryPage({
             contain: "layout style",
           }}
         >
+          {/* Real cards for completed series */}
           {filtered.map((anime, i) => (
             <AnimeCard
-              key={i}
+              key={anime.id ?? i}
               anime={anime}
               size={cardSize}
               onClick={() => onSelectAnime(anime)}
             />
           ))}
+
+          {/* Skeleton slots for in-progress and pending series */}
+          {fetchingMetadata &&
+            Array.from({
+              length: progress.total - progress.current,
+            }).map((_, i) => (
+              <SkeletonCard
+                key={`skeleton-${i}`}
+                variant={i === 0 ? "active" : "pending"}
+              />
+            ))}
         </div>
       )}
 

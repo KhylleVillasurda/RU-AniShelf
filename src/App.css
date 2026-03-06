@@ -36,6 +36,11 @@ body {
   font-family: var(--font-body);
 }
 
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
 /* Custom scrollbar — thinner and styled to match theme */
 ::-webkit-scrollbar {
   display: none;
