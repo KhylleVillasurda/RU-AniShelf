@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Search, Loader2, X, Pencil } from "lucide-react";
 import AniListPickerModal, { SearchResult } from "./AniListPickerModal";
+import { MalResult } from "./MetadataFieldPickerModal";
 
 interface MetadataEditModalProps {
   seriesId: number;
@@ -24,15 +25,54 @@ export default function MetadataEditModal({
     null,
   );
 
+  // Read the metadata source setting so we search the right API
+  const [metadataSource, setMetadataSource] = useState<string>("anilist");
+
+  useEffect(() => {
+    invoke<string | null>("get_setting", { key: "metadata_source" })
+      .then((val) => setMetadataSource(val ?? "anilist"))
+      .catch(() => setMetadataSource("anilist"));
+  }, []);
+
+  const isMal = metadataSource === "mal";
+  const sourceLabel = isMal ? "MyAnimeList" : "AniList";
+
   async function handleSearch() {
     if (!query.trim()) return;
     setSearching(true);
     setError("");
 
     try {
-      const results = await invoke<SearchResult[]>("search_anime_multi", {
-        title: query.trim(),
-      });
+      let results: SearchResult[];
+
+      if (isMal) {
+        // ── MAL mode — search MAL, map to SearchResult with negative sentinel IDs
+        // Negative mal_id is used so the picker can uniquely key each row.
+        // The save call below guards anilist_id > 0, so they become null in the DB.
+        const malResults = await invoke<MalResult[]>("search_mal_multi", {
+          title: query.trim(),
+        });
+
+        results = malResults.map((m) => ({
+          anilist_id: -m.mal_id,
+          title: m.title,
+          title_english: m.title_english,
+          title_native: m.title_native,
+          synopsis: m.synopsis,
+          cover_url: m.cover_url,
+          anilist_score: m.mal_score,
+          episode_count: m.episode_count,
+          genres: m.genres,
+          status: m.status,
+          format: m.format,
+          season_year: m.season_year,
+        }));
+      } else {
+        // ── AniList mode (default)
+        results = await invoke<SearchResult[]>("search_anime_multi", {
+          title: query.trim(),
+        });
+      }
 
       if (results.length === 0) {
         setError(`No results found for "${query}"`);
@@ -40,10 +80,8 @@ export default function MetadataEditModal({
       }
 
       if (results.length === 1) {
-        // Only one result — save immediately
         await handleSave(results[0]);
       } else {
-        // Multiple results — show picker
         setPickerResults(results);
       }
     } catch (err) {
@@ -67,7 +105,8 @@ export default function MetadataEditModal({
         coverRemoteUrl: result.cover_url,
         synopsis: result.synopsis,
         episodeCount: result.episode_count,
-        anilistId: result.anilist_id,
+        // Guard: negative sentinels (MAL mode) and 0 must never reach the DB
+        anilistId: result.anilist_id > 0 ? result.anilist_id : null,
         anilistScore: result.anilist_score,
         genres: result.genres,
       });
@@ -94,8 +133,7 @@ export default function MetadataEditModal({
         >
           {/* Header */}
           <div
-            className="px-6 py-4 border-b flex items-center
-              justify-between"
+            className="px-6 py-4 border-b flex items-center justify-between"
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <div className="flex items-center gap-3">
@@ -131,7 +169,7 @@ export default function MetadataEditModal({
                 className="text-xs font-bold tracking-wide"
                 style={{ color: "var(--text-secondary)" }}
               >
-                Search AniList
+                Search {sourceLabel}
               </label>
               <div className="flex gap-2">
                 <input
@@ -169,8 +207,9 @@ export default function MetadataEditModal({
                 </button>
               </div>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                Try the Japanese title if the English one doesn't match. e.g.
-                "Tate no Yuusha" instead of "Rising of the Shield Hero"
+                {isMal
+                  ? 'Try the Japanese title for better MAL results. e.g. "Azumanga Daioh" instead of "Azumanga Daiou"'
+                  : 'Try the Japanese title if the English one doesn\'t match. e.g. "Tate no Yuusha" instead of "Rising of the Shield Hero"'}
               </p>
             </div>
 
@@ -207,8 +246,7 @@ export default function MetadataEditModal({
           >
             <button
               onClick={onCancel}
-              className="px-4 py-2 rounded-md border text-sm
-                transition-all"
+              className="px-4 py-2 rounded-md border text-sm transition-all"
               style={{
                 borderColor: "var(--border-subtle)",
                 color: "var(--text-secondary)",
@@ -220,7 +258,7 @@ export default function MetadataEditModal({
         </div>
       </div>
 
-      {/* AniList picker if multiple results */}
+      {/* Result picker — shared for both AniList and MAL results */}
       {pickerResults && (
         <AniListPickerModal
           results={pickerResults}
