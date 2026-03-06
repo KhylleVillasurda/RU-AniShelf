@@ -438,7 +438,7 @@ export default function LibraryPage({
           }
 
           const malAsSearchResults: SearchResult[] = malResults.map((m) => ({
-            anilist_id: m.mal_id,
+            anilist_id: -m.mal_id, // negative sentinel: unique for picker, maps to null at save
             title: m.title,
             title_english: m.title_english,
             title_native: m.title_native,
@@ -527,7 +527,7 @@ export default function LibraryPage({
           coverRemoteUrl: meta.cover_url,
           synopsis: meta.synopsis,
           episodeCount: meta.episode_count,
-          anilistId: meta.anilist_id,
+          anilistId: meta.anilist_id > 0 ? meta.anilist_id : null,
           anilistScore: meta.anilist_score,
           genres: meta.genres,
           episodes: allEpisodes,

@@ -317,11 +317,12 @@ async fn save_series_to_library(
     anilist_id: Option<i64>,
     anilist_score: Option<f64>,
     genres: Vec<String>,
+    force_refresh: bool,
     // Each episode: [episode_number, file_path, file_name, season_name]
     episodes: Vec<(i32, String, String, String)>,
 ) -> Result<i64, String> {
     let cover_local_path = if let Some(ref url) = cover_remote_url {
-        match metadata::download_cover(url, &title).await {
+        match metadata::download_cover(url, &title, force_refresh).await {
             Ok(path) => Some(path),
             Err(_) => None,
         }
@@ -376,9 +377,9 @@ async fn update_series_metadata(
     anilist_score: Option<f64>,
     genres: Vec<String>,
 ) -> Result<(), String> {
-    // Re-download cover art with new URL
+    // Re-download cover art with new URL — always force refresh on manual edit
     let cover_local_path = if let Some(ref url) = cover_remote_url {
-        match metadata::download_cover(url, &title).await {
+        match metadata::download_cover(url, &title, true).await {
             Ok(path) => Some(path),
             Err(_) => None,
         }
