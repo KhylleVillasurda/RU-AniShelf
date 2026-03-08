@@ -13,6 +13,7 @@ import {
   BookmarkPlus,
   Settings,
   Library,
+  User,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -214,6 +215,14 @@ export default function Sidebar({
         />
 
         <NavSection label="System" theme={theme} />
+        <NavItem
+          icon={<User size={15} />}
+          label="Profile"
+          page="profile"
+          activePage={activePage}
+          onNavigate={onNavigate}
+          theme={theme}
+        />
         <NavItem
           icon={<Settings size={15} />}
           label="Settings"
