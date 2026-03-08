@@ -27,6 +27,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [seriesCount, setSeriesCount] = useState(0);
   const { theme } = useTheme();
+  const [libraryReloadTrigger, setLibraryReloadTrigger] = useState(0);
   const [statusUpdates, setStatusUpdates] = useState<
     Record<number, AnimeCardData["status"]>
   >({});
@@ -99,6 +100,7 @@ export default function App() {
           anime={selectedAnime}
           onBack={handleBack}
           onStatusUpdate={handleStatusUpdate}
+          onMetadataUpdate={() => setLibraryReloadTrigger((n) => n + 1)}
         />
       );
     }
@@ -111,6 +113,7 @@ export default function App() {
           statusFilter={statusFilter}
           onSelectAnime={handleSelectAnime}
           statusUpdates={statusUpdates}
+          reloadTrigger={libraryReloadTrigger}
         />
       );
     }

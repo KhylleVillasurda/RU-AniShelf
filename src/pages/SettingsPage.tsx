@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTheme, themes, ThemeId } from "../contexts/ThemeContext";
+import { LayoutGrid } from "lucide-react";
 import {
   Settings,
   FolderOpen,
@@ -22,6 +23,8 @@ interface SettingsState {
   library_folder: string;
   metadata_source: string;
   mal_client_id: string;
+  card_size: string;
+  grid_layout: string;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -29,6 +32,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   library_folder: "",
   metadata_source: "anilist",
   mal_client_id: "",
+  card_size: "medium",
+  grid_layout: "comfortable",
 };
 
 // Reusable section wrapper component
@@ -145,6 +150,8 @@ export default function SettingsPage() {
         library_folder: all["library_folder"] ?? "",
         metadata_source: all["metadata_source"] ?? "anilist",
         mal_client_id: all["mal_client_id"] ?? "",
+        card_size: all["card_size"] ?? "medium",
+        grid_layout: all["grid_layout"] ?? "comfortable",
       });
       setFolders(folderList);
     } catch (err) {
@@ -175,6 +182,14 @@ export default function SettingsPage() {
         invoke("save_setting", {
           key: "mal_client_id",
           value: settings.mal_client_id,
+        }),
+        invoke("save_setting", {
+          key: "card_size",
+          value: settings.card_size,
+        }),
+        invoke("save_setting", {
+          key: "grid_layout",
+          value: settings.grid_layout,
         }),
       ]);
       setSaveStatus("success");
@@ -605,6 +620,98 @@ export default function SettingsPage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      </SettingsSection>
+
+      {/* ── Library Display ── */}
+      <SettingsSection
+        icon={<LayoutGrid size={15} />}
+        title="Library Display"
+        description="Control how your library grid looks"
+      >
+        <div className="flex flex-col gap-5">
+          {/* Card Size */}
+          <div>
+            <p
+              className="text-xs font-bold mb-2"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Card Size
+            </p>
+            <div className="flex gap-2">
+              {(["small", "medium", "large"] as const).map((size) => (
+                <button
+                  key={size}
+                  onClick={() =>
+                    setSettings((s) => ({ ...s, card_size: size }))
+                  }
+                  className="flex-1 py-2 rounded-md border text-xs font-bold
+              capitalize transition-all"
+                  style={{
+                    borderColor:
+                      settings.card_size === size
+                        ? "var(--border-strong)"
+                        : "var(--border-subtle)",
+                    color:
+                      settings.card_size === size
+                        ? "var(--accent)"
+                        : "var(--text-muted)",
+                    background:
+                      settings.card_size === size
+                        ? "var(--accent-dim)"
+                        : "transparent",
+                  }}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Grid Layout */}
+          <div>
+            <p
+              className="text-xs font-bold mb-2"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Grid Layout
+            </p>
+            <div className="flex gap-2">
+              {(["compact", "comfortable", "cozy"] as const).map((layout) => (
+                <button
+                  key={layout}
+                  onClick={() =>
+                    setSettings((s) => ({ ...s, grid_layout: layout }))
+                  }
+                  className="flex-1 py-2 rounded-md border text-xs font-bold
+              capitalize transition-all"
+                  style={{
+                    borderColor:
+                      settings.grid_layout === layout
+                        ? "var(--border-strong)"
+                        : "var(--border-subtle)",
+                    color:
+                      settings.grid_layout === layout
+                        ? "var(--accent)"
+                        : "var(--text-muted)",
+                    background:
+                      settings.grid_layout === layout
+                        ? "var(--accent-dim)"
+                        : "transparent",
+                  }}
+                >
+                  {layout}
+                </button>
+              ))}
+            </div>
+            <p
+              className="text-[10px] mt-2"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Compact — more cards · Comfortable — balanced · Cozy — fewer
+              larger cards
+            </p>
           </div>
         </div>
       </SettingsSection>
