@@ -653,6 +653,70 @@ async fn fetch_kitsu_profile(username: String) -> Result<kitsu::KitsuProfile, St
     kitsu::fetch_kitsu_profile(&username).await
 }
 
+/// Saves a serialised KitsuProfile JSON string to the kitsu_cache table.
+/// Called by the frontend after a successful fetch so data persists across sessions.
+/// Creates the table on first use — no db.rs migration needed.
+#[tauri::command]
+fn save_kitsu_cache(
+    state: tauri::State<DbState>,
+    username: String,
+    json: String,
+) -> Result<(), String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    // Create table if it doesn't exist yet (lazy migration)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS kitsu_cache (
+            username  TEXT PRIMARY KEY,
+            data      TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        );",
+    )
+    .map_err(|e| format!("DB error creating kitsu_cache table: {}", e))?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO kitsu_cache (username, data, cached_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(username) DO UPDATE SET data = ?2, cached_at = ?3",
+        rusqlite::params![username, json, now],
+    )
+    .map_err(|e| format!("DB error saving kitsu cache: {}", e))?;
+    Ok(())
+}
+
+/// Returns the cached KitsuProfile JSON for the given username, or null if not cached.
+#[tauri::command]
+fn get_kitsu_cache(
+    state: tauri::State<DbState>,
+    username: String,
+) -> Result<Option<String>, String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    // Table may not exist yet if save has never been called
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS kitsu_cache (
+            username  TEXT PRIMARY KEY,
+            data      TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        );",
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+    let result = conn.query_row(
+        "SELECT data FROM kitsu_cache WHERE username = ?1",
+        rusqlite::params![username],
+        |row| row.get::<_, String>(0),
+    );
+    match result {
+        Ok(json) => Ok(Some(json)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("DB error reading kitsu cache: {}", e)),
+    }
+}
+
 // ─── 11. App Initialization ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -692,8 +756,10 @@ pub fn run() {
             // Utilities
             open_episode,
             get_mal_client_id,
-            //Kitsu
+            // Kitsu
             fetch_kitsu_profile,
+            save_kitsu_cache,
+            get_kitsu_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTheme } from "../contexts/ThemeContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from "recharts";
 import {
@@ -391,6 +392,112 @@ function InfoRow({
   );
 }
 
+// ─── Loading Skeleton ─────────────────────────────────────────────────────────
+
+function SkeletonBox({
+  w,
+  h,
+  rounded = "rounded-md",
+}: {
+  w: string;
+  h: string;
+  rounded?: string;
+}) {
+  return (
+    <div
+      className={`${w} ${h} ${rounded} animate-pulse`}
+      style={{ background: "var(--bg-elevated)" }}
+    />
+  );
+}
+
+function ProfileSkeleton({
+  theme,
+}: {
+  theme: ReturnType<typeof useTheme>["theme"];
+}) {
+  return (
+    <div className="flex flex-col gap-5 max-w-2xl pb-8">
+      {/* Cover */}
+      <div className="relative">
+        <div
+          className="w-full rounded-xl animate-pulse"
+          style={{ height: 120, background: "var(--bg-elevated)" }}
+        />
+        {/* Avatar skeleton */}
+        <div
+          className="absolute left-4 w-20 h-20 rounded-xl animate-pulse"
+          style={{
+            bottom: "-2.25rem",
+            background: "var(--bg-surface)",
+            border: `3px solid ${theme.bgBase}`,
+          }}
+        />
+      </div>
+      {/* Name */}
+      <div className="pl-28 pr-1 pt-1 flex flex-col gap-2">
+        <SkeletonBox w="w-36" h="h-5" />
+        <SkeletonBox w="w-48" h="h-3" />
+      </div>
+      {/* Bio */}
+      <div className="flex flex-col gap-2 px-1">
+        <SkeletonBox w="w-full" h="h-3" />
+        <SkeletonBox w="w-4/5" h="h-3" />
+        <SkeletonBox w="w-2/3" h="h-3" />
+      </div>
+      {/* Meta rows */}
+      <div className="flex flex-col gap-2 px-1">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="flex gap-3">
+            <SkeletonBox w="w-20" h="h-3" />
+            <SkeletonBox w="w-28" h="h-3" />
+          </div>
+        ))}
+      </div>
+      <div className="h-px" style={{ background: "var(--border-subtle)" }} />
+      {/* Stat pills */}
+      <div className="flex gap-3">
+        {[...Array(3)].map((_, i) => (
+          <div
+            key={i}
+            className="flex-1 rounded-xl border p-3 flex flex-col items-center gap-2"
+            style={{ borderColor: "var(--border-subtle)" }}
+          >
+            <SkeletonBox w="w-4" h="h-4" rounded="rounded-full" />
+            <SkeletonBox w="w-12" h="h-4" />
+            <SkeletonBox w="w-16" h="h-2" />
+          </div>
+        ))}
+      </div>
+      {/* Stats card */}
+      <div
+        className="rounded-xl border p-5 flex flex-col gap-4"
+        style={{
+          background: "var(--bg-elevated)",
+          borderColor: "var(--border-subtle)",
+        }}
+      >
+        <SkeletonBox w="w-24" h="h-4" />
+        <div className="flex gap-2">
+          <SkeletonBox w="w-28" h="h-6" />
+          <SkeletonBox w="w-28" h="h-6" />
+        </div>
+        <div className="flex gap-6 items-center">
+          <div
+            className="w-40 h-40 rounded-full animate-pulse flex-shrink-0"
+            style={{ background: "var(--bg-surface)" }}
+          />
+          <div className="flex-1 flex flex-col gap-2">
+            {[...Array(6)].map((_, i) => (
+              <SkeletonBox key={i} w="w-full" h="h-3" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
@@ -398,7 +505,10 @@ export default function ProfilePage() {
   const [username, setUsername] = useState<string | null>(null);
   const [profile, setProfile] = useState<KitsuProfile | null>(null);
   const [loadingUsername, setLoadingUsername] = useState(true);
+  // true only on first load with no cache — shows skeletons
   const [fetching, setFetching] = useState(false);
+  // true on background refresh — profile already visible, no skeletons
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -418,21 +528,55 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!username) return;
-    fetchProfile(username);
+    loadProfile(username);
   }, [username]);
 
-  async function fetchProfile(user: string) {
-    setFetching(true);
+  // Load cache instantly, then refresh in background
+  async function loadProfile(user: string) {
+    // Step 1 — try to hydrate from cache immediately
+    try {
+      const cached = await invoke<string | null>("get_kitsu_cache", {
+        username: user,
+      });
+      if (cached) {
+        setProfile(JSON.parse(cached) as KitsuProfile);
+        // Cached data is shown — background refresh, no skeletons
+        setRefreshing(true);
+      } else {
+        // No cache — show skeletons until first fetch completes
+        setFetching(true);
+      }
+    } catch {
+      setFetching(true);
+    }
+    // Step 2 — always fetch fresh data
+    await fetchProfile(user, false);
+  }
+
+  // Manual refresh (Refresh button) — always shows the refreshing indicator
+  async function fetchProfile(user: string, manual = true) {
+    if (manual) setRefreshing(true);
     setError(null);
     try {
       const data = await invoke<KitsuProfile>("fetch_kitsu_profile", {
         username: user,
       });
       setProfile(data);
+      // Persist to cache for next session
+      await invoke("save_kitsu_cache", {
+        username: user,
+        json: JSON.stringify(data),
+      });
     } catch (err: unknown) {
-      setError(typeof err === "string" ? err : "Failed to fetch Kitsu profile");
+      // Only surface error if there is no cached data to fall back to
+      if (!profile) {
+        setError(
+          typeof err === "string" ? err : "Failed to fetch Kitsu profile",
+        );
+      }
     } finally {
       setFetching(false);
+      setRefreshing(false);
     }
   }
 
@@ -489,18 +633,7 @@ export default function ProfilePage() {
   }
 
   if (fetching) {
-    return (
-      <div className="flex items-center justify-center h-full gap-3">
-        <Loader2
-          size={18}
-          className="animate-spin"
-          style={{ color: theme.accent }}
-        />
-        <span className="text-sm" style={{ color: theme.textMuted }}>
-          Fetching {username}'s Kitsu profile…
-        </span>
-      </div>
-    );
+    return <ProfileSkeleton theme={theme} />;
   }
 
   if (error) {
@@ -576,16 +709,18 @@ export default function ProfilePage() {
           {/* Refresh button */}
           <button
             onClick={() => fetchProfile(username)}
+            disabled={refreshing}
             className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1.5
-              rounded-md text-[10px] font-bold uppercase tracking-widest border backdrop-blur-sm transition-all"
+              rounded-md text-[10px] font-bold uppercase tracking-widest border backdrop-blur-sm transition-all
+              disabled:opacity-50"
             style={{
               background: "rgba(0,0,0,0.5)",
               borderColor: "rgba(255,255,255,0.08)",
               color: "rgba(255,255,255,0.7)",
             }}
           >
-            <RefreshCw size={10} />
-            Refresh
+            <RefreshCw size={10} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? "Syncing..." : "Refresh"}
           </button>
         </div>
 
@@ -624,9 +759,34 @@ export default function ProfilePage() {
         >
           {profile.name}
         </h2>
-        <p className="text-[11px] mt-0.5" style={{ color: theme.textMuted }}>
+        <button
+          onClick={() => openUrl(`https://kitsu.app/users/${profile.slug}`)}
+          className="text-[11px] mt-0.5 flex items-center gap-1 hover:underline transition-all"
+          style={{
+            color: theme.textMuted,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
           kitsu.app/users/{profile.slug}
-        </p>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ opacity: 0.6 }}
+          >
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </button>
       </div>
 
       {/* ── Bio + meta — plain, no card ───────────────────────────────────────── */}
