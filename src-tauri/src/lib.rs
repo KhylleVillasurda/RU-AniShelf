@@ -15,12 +15,14 @@
 //   7. Watch History              (log, get, clear)
 //   8. Settings                   (key-value store)
 //   9. Utilities                  (open episode, get MAL client ID)
-//  10. App Initialization         (Tauri builder + command registration)
+//   10. Kitsu Integration          (fetch metadata by Kitsu slug)
+//   11. App Initialization         (Tauri builder + command registration)
 // =============================================================================
 
 // ─── 1. Module Imports & State ────────────────────────────────────────────────
 
 mod db;
+mod kitsu;
 mod metadata;
 mod scanner;
 
@@ -642,7 +644,16 @@ async fn get_mal_client_id(state: tauri::State<'_, DbState>) -> Result<String, S
         .unwrap_or_default())
 }
 
-// ─── 10. App Initialization ───────────────────────────────────────────────────
+// ─── 10. Kitsu Integration ───────────────────────────────────────────────────
+
+/// Fetches a public Kitsu user profile, bio, and anime/manga genre stats.
+/// Called by the ProfilePage — username comes from the kitsu_username setting.
+#[tauri::command]
+async fn fetch_kitsu_profile(username: String) -> Result<kitsu::KitsuProfile, String> {
+    kitsu::fetch_kitsu_profile(&username).await
+}
+
+// ─── 11. App Initialization ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -681,6 +692,8 @@ pub fn run() {
             // Utilities
             open_episode,
             get_mal_client_id,
+            //Kitsu
+            fetch_kitsu_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
