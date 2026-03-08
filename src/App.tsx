@@ -7,6 +7,7 @@ import LibraryPage from "./pages/LibraryPage";
 import SeriesDetailPage from "./pages/SeriesDetailPage";
 import HistoryPage from "./pages/HistoryPage";
 import SettingsPage from "./pages/SettingsPage";
+import ProfilePage from "./pages/ProfilePage";
 
 type StatusFilter =
   | "all"
@@ -67,6 +68,7 @@ export default function App() {
     onhold: "On Hold",
     plantowatch: "Plan to Watch",
     settings: "Settings",
+    profile: "My Profile",
   };
 
   const statusFilter = STATUS_PAGES[activePage] ?? "all";
@@ -124,6 +126,10 @@ export default function App() {
 
     if (activePage === "history") {
       return <HistoryPage />;
+    }
+
+    if (activePage === "profile") {
+      return <ProfilePage />;
     }
 
     return (

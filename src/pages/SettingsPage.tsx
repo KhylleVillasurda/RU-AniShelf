@@ -16,6 +16,8 @@ import {
   Plus,
   X,
   ExternalLink,
+  FlaskConical,
+  User,
 } from "lucide-react";
 
 interface SettingsState {
@@ -25,6 +27,7 @@ interface SettingsState {
   mal_client_id: string;
   card_size: string;
   grid_layout: string;
+  kitsu_username: string;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -34,6 +37,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   mal_client_id: "",
   card_size: "medium",
   grid_layout: "comfortable",
+  kitsu_username: "",
 };
 
 // Reusable section wrapper component
@@ -87,6 +91,8 @@ export default function SettingsPage() {
   const { themeId, setThemeId } = useTheme();
   const [folders, setFolders] = useState<string[]>([]);
   const [addingFolder, setAddingFolder] = useState(false);
+  const [seedingDemo, setSeedingDemo] = useState(false);
+  const [clearingDemo, setClearingDemo] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle",
   );
@@ -96,6 +102,43 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  async function handleSeedDemo() {
+    if (
+      !confirm(
+        "This creates 10 fake anime folders so you can test the full scan flow. Continue?",
+      )
+    )
+      return;
+    setSeedingDemo(true);
+    try {
+      const demoPath = await invoke<string>("seed_demo_data");
+      alert(`Demo folders created!\n\nGo to Library and scan:\n${demoPath}`);
+    } catch (err: any) {
+      // If already exists, tell user to clear first
+      alert(err?.toString() ?? "Failed to create demo data");
+    } finally {
+      setSeedingDemo(false);
+    }
+  }
+
+  async function handleClearDemo() {
+    if (
+      !confirm("This will remove all demo series from your library. Continue?")
+    )
+      return;
+    setClearingDemo(true);
+    try {
+      const count = await invoke<number>("clear_demo_data");
+      setSaveStatus(count > 0 ? "success" : "idle");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch (err) {
+      console.error("Failed to clear demo data:", err);
+      setSaveStatus("error");
+    } finally {
+      setClearingDemo(false);
+    }
+  }
 
   async function handleAddFolder() {
     setFolders((await invoke<string[]>("get_library_folders")).map(String));
@@ -152,6 +195,7 @@ export default function SettingsPage() {
         mal_client_id: all["mal_client_id"] ?? "",
         card_size: all["card_size"] ?? "medium",
         grid_layout: all["grid_layout"] ?? "comfortable",
+        kitsu_username: all["kitsu_username"] ?? "",
       });
       setFolders(folderList);
     } catch (err) {
@@ -190,6 +234,10 @@ export default function SettingsPage() {
         invoke("save_setting", {
           key: "grid_layout",
           value: settings.grid_layout,
+        }),
+        invoke("save_setting", {
+          key: "kitsu_username",
+          value: settings.kitsu_username,
         }),
       ]);
       setSaveStatus("success");
@@ -713,6 +761,170 @@ export default function SettingsPage() {
               larger cards
             </p>
           </div>
+        </div>
+      </SettingsSection>
+
+      {/* ── Kitsu Account ── */}
+      <SettingsSection
+        icon={<User size={15} />}
+        title="Kitsu Account"
+        description="Connect your Kitsu profile to display your anime stats"
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label
+              style={{ color: "var(--text-secondary)" }}
+              className="text-xs font-bold tracking-wide"
+            >
+              Kitsu Username
+            </label>
+            <div className="flex gap-2">
+              <input
+                style={{
+                  background: "var(--bg-surface)",
+                  borderColor: "var(--border-subtle)",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-body)",
+                }}
+                type="text"
+                value={settings.kitsu_username}
+                onChange={(e) =>
+                  updateSetting("kitsu_username", e.target.value)
+                }
+                placeholder="e.g. YourKitsuUsername"
+                className="w-full border rounded-md px-3 py-2 text-sm outline-none transition-colors"
+              />
+              {settings.kitsu_username.trim() && (
+                <a
+                  href={`https://kitsu.app/users/${settings.kitsu_username.trim()}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-md border text-sm transition-all flex-shrink-0"
+                  style={{
+                    borderColor: "var(--border-default)",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <ExternalLink size={13} />
+                  View
+                </a>
+              )}
+            </div>
+            <p style={{ color: "var(--text-muted)" }} className="text-[10px]">
+              Your public Kitsu username — used to fetch your anime stats and
+              profile for the Profile page. Hit Save Settings below to apply.
+            </p>
+          </div>
+
+          {settings.kitsu_username.trim() && (
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-md border text-[11px]"
+              style={{
+                borderColor: "var(--border-subtle)",
+                background: "var(--bg-surface)",
+                color: "var(--text-muted)",
+              }}
+            >
+              <User size={11} style={{ color: "var(--accent)" }} />
+              <span>
+                Profile page will show stats for{" "}
+                <span style={{ color: "var(--accent)" }}>
+                  {settings.kitsu_username.trim()}
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+      </SettingsSection>
+
+      {/* ── Demo Data ── */}
+      <SettingsSection
+        icon={<FlaskConical size={15} />}
+        title="Demo Data"
+        description="Populate your library with sample anime for testing"
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div
+                className="text-sm mb-0.5"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Load Demo Library
+              </div>
+              <div
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Adds 10 sample anime series with covers, genres and fake
+                episodes
+              </div>
+            </div>
+            <button
+              onClick={handleSeedDemo}
+              disabled={seedingDemo}
+              className="flex items-center gap-2 px-4 py-2 rounded-md
+          border text-xs font-bold transition-all
+          disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                borderColor: "var(--border-default)",
+                color: "var(--accent)",
+                background: "var(--accent-dim)",
+              }}
+            >
+              {seedingDemo ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <FlaskConical size={12} />
+              )}
+              {seedingDemo ? "Loading..." : "Load Demo Data"}
+            </button>
+          </div>
+
+          <div
+            className="h-px"
+            style={{ background: "var(--border-subtle)" }}
+          />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <div
+                className="text-sm mb-0.5"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Clear Demo Library
+              </div>
+              <div
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Removes all demo series — your real library is unaffected
+              </div>
+            </div>
+            <button
+              onClick={handleClearDemo}
+              disabled={clearingDemo}
+              className="flex items-center gap-2 px-4 py-2 rounded-md
+          border text-xs font-bold transition-all
+          disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                borderColor: "rgba(255,68,102,0.2)",
+                color: "#ff4466",
+              }}
+            >
+              {clearingDemo ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
+              {clearingDemo ? "Clearing..." : "Clear Demo Data"}
+            </button>
+          </div>
+
+          <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            ⚠ Demo episodes use fake file paths — playback won't work, but all
+            UI features like metadata, genres and status are fully functional.
+          </p>
         </div>
       </SettingsSection>
 
