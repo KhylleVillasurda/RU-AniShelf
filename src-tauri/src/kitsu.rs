@@ -8,13 +8,12 @@
 //   1. Kitsu API deserialisation types  (raw JSON shapes)
 //   2. Output types                     (serialised back to frontend)
 //   3. Public fetch function
+//   4. Helpers
 // =============================================================================
 
 use serde::{Deserialize, Serialize};
 
 // ─── 1. Kitsu API deserialisation types ───────────────────────────────────────
-// These mirror the raw JSON:API response. Fields use the Kitsu camelCase names
-// mapped via serde rename so our Rust structs stay snake_case.
 
 #[derive(Deserialize, Debug)]
 struct KitsuUserResponse {
@@ -29,25 +28,80 @@ struct KitsuUserData {
     relationships: Option<KitsuUserRelationships>,
 }
 
+/// Only the fields we actually use are typed — everything else is absorbed
+/// by serde_json::Value to prevent parse failures on unknown/nullable keys.
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct KitsuUserAttributes {
-    name: String,
-    slug: String,
+    name: Option<String>,
+    slug: Option<String>,
     about: Option<String>,
     location: Option<String>,
     gender: Option<String>,
     birthday: Option<String>,
-    #[serde(rename = "createdAt")]
     created_at: Option<String>,
     avatar: Option<KitsuImageSet>,
-    #[serde(rename = "coverImage")]
     cover_image: Option<KitsuImageSet>,
-    #[serde(rename = "waifuOrHusbando")]
     waifu_or_husbando: Option<String>,
+    /// Total seconds spent watching anime — lives on the user object, not stats
+    #[serde(default)]
+    life_spent_on_anime: Option<serde_json::Value>,
+    // ── Absorb all other fields so unknown keys never break parsing ───────────
+    #[serde(default)]
+    past_names: Option<serde_json::Value>,
+    #[serde(default)]
+    followers_count: Option<serde_json::Value>,
+    #[serde(default)]
+    following_count: Option<serde_json::Value>,
+    #[serde(default)]
+    likes_given_count: Option<serde_json::Value>,
+    #[serde(default)]
+    reviews_count: Option<serde_json::Value>,
+    #[serde(default)]
+    comments_count: Option<serde_json::Value>,
+    #[serde(default)]
+    favorites_count: Option<serde_json::Value>,
+    #[serde(default)]
+    likes_received_count: Option<serde_json::Value>,
+    #[serde(default)]
+    posts_count: Option<serde_json::Value>,
+    #[serde(default)]
+    ratings_count: Option<serde_json::Value>,
+    #[serde(default)]
+    media_reactions_count: Option<serde_json::Value>,
+    #[serde(default)]
+    updated_at: Option<serde_json::Value>,
+    #[serde(default)]
+    pro_expires_at: Option<serde_json::Value>,
+    #[serde(default)]
+    pro_tier: Option<serde_json::Value>,
+    #[serde(default)]
+    title: Option<serde_json::Value>,
+    #[serde(default)]
+    profile_completed: Option<serde_json::Value>,
+    #[serde(default)]
+    feed_completed: Option<serde_json::Value>,
+    #[serde(default)]
+    website: Option<serde_json::Value>,
+    #[serde(default)]
+    share_to_global: Option<serde_json::Value>,
+    #[serde(default)]
+    title_language_preference: Option<serde_json::Value>,
+    #[serde(default)]
+    ao_pro: Option<serde_json::Value>,
+    #[serde(default)]
+    role: Option<serde_json::Value>,
+    #[serde(default)]
+    status: Option<serde_json::Value>,
 }
 
+/// Kitsu image objects can include tiny, meta, blurhash etc.
+/// We only need the URL strings — everything else is ignored via meta field.
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct KitsuImageSet {
+    tiny: Option<String>,
     small: Option<String>,
     medium: Option<String>,
     large: Option<String>,
@@ -55,9 +109,12 @@ struct KitsuImageSet {
 }
 
 impl KitsuImageSet {
-    /// Returns the best available image URL, preferring larger sizes
     fn best_url(self) -> Option<String> {
-        self.large.or(self.original).or(self.medium).or(self.small)
+        self.large
+            .or(self.original)
+            .or(self.medium)
+            .or(self.small)
+            .or(self.tiny)
     }
 }
 
@@ -74,12 +131,11 @@ struct KitsuRelationshipRef {
 #[derive(Deserialize, Debug)]
 struct KitsuResourceIdentifier {
     id: String,
-    #[serde(rename = "type")]
-    resource_type: String,
 }
 
-/// Included side-loaded resources (e.g. waifu character object)
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct KitsuIncluded {
     id: String,
     #[serde(rename = "type")]
@@ -93,7 +149,30 @@ struct KitsuIncludedAttributes {
     image: Option<KitsuImageSet>,
 }
 
-// ─── Stats response ────────────────────────────────────────────────────────────
+// ─── Stats response ───────────────────────────────────────────────────────────
+//
+// Real API shape (verified from live response):
+// {
+//   "data": [{
+//     "attributes": {
+//       "kind": "anime-category-breakdown",   ← NOT "statType"
+//       "statsData": {                         ← NOT "value"
+//         "total": 48,
+//         "categories": { "Action": 33, ... } ← nested under categories
+//       }
+//     }
+//   }, {
+//     "attributes": {
+//       "kind": "anime-amount-consumed",
+//       "statsData": {
+//         "time": 2230404,   ← seconds
+//         "media": 114,      ← total entries
+//         "units": 152,      ← episodes watched
+//         "completed": 33
+//       }
+//     }
+//   }]
+// }
 
 #[derive(Deserialize, Debug)]
 struct KitsuStatsResponse {
@@ -106,14 +185,17 @@ struct KitsuStatData {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct KitsuStatAttributes {
-    #[serde(rename = "statType")]
-    stat_type: String,
-    value: serde_json::Value,
+    kind: String,
+    stats_data: KitsuStatsData,
 }
 
+/// statsData shape varies by kind — use Value for flexibility
+#[derive(Deserialize, Debug)]
+struct KitsuStatsData(serde_json::Value);
+
 // ─── 2. Output types ─────────────────────────────────────────────────────────
-// These derive Serialize so Tauri can return them directly to the frontend.
 
 #[derive(Serialize, Debug)]
 pub struct KitsuProfile {
@@ -127,11 +209,8 @@ pub struct KitsuProfile {
     pub created_at: Option<String>,
     pub avatar_url: Option<String>,
     pub cover_url: Option<String>,
-    /// Raw label: "Waifu" or "Husbando"
     pub waifu_or_husbando: Option<String>,
-    /// The character's display name
     pub waifu_name: Option<String>,
-    /// The character's image URL
     pub waifu_image_url: Option<String>,
     pub anime_stats: Option<KitsuAnimeStats>,
     pub manga_stats: Option<KitsuMangaStats>,
@@ -139,10 +218,9 @@ pub struct KitsuProfile {
 
 #[derive(Serialize, Debug)]
 pub struct KitsuAnimeStats {
-    /// Raw seconds — divide by 86400 on the frontend to get days
+    /// Raw seconds — frontend divides by 86400 for days
     pub time_spent_seconds: f64,
     pub completed: f64,
-    /// Sorted descending by count
     pub genre_breakdown: Vec<KitsuGenreEntry>,
 }
 
@@ -150,7 +228,6 @@ pub struct KitsuAnimeStats {
 pub struct KitsuMangaStats {
     pub chapters_read: f64,
     pub completed: f64,
-    /// Sorted descending by count
     pub genre_breakdown: Vec<KitsuGenreEntry>,
 }
 
@@ -162,18 +239,22 @@ pub struct KitsuGenreEntry {
 
 // ─── 3. Public fetch function ─────────────────────────────────────────────────
 
-/// Fetches a public Kitsu user profile and their anime/manga stats.
-/// Makes two sequential requests: one for profile + waifu, one for stats.
 pub async fn fetch_kitsu_profile(username: &str) -> Result<KitsuProfile, String> {
     let client = reqwest::Client::builder()
         .user_agent("ru-anishelf/1.0")
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    // ── Request 1: User profile + waifu character ──────────────────────────
-    // Try slug first (matches the kitsu.app/users/my-slug URL format).
-    // If that returns no results, fall back to display name search.
-    let user_body = fetch_user(&client, "slug", username).await?;
+    // ── Request 1: User profile + waifu ───────────────────────────────────
+    // Numeric input → filter by ID directly (e.g. "1613403")
+    // Otherwise try slug, fall back to display name
+    let is_numeric = username.chars().all(|c| c.is_ascii_digit());
+
+    let user_body = if is_numeric {
+        fetch_user(&client, "id", username).await?
+    } else {
+        fetch_user(&client, "slug", username).await?
+    };
 
     let user_body = if user_body.data.is_empty() {
         fetch_user(&client, "name", username).await?
@@ -193,7 +274,7 @@ pub async fn fetch_kitsu_profile(username: &str) -> Result<KitsuProfile, String>
     let attrs = user.attributes;
     let (waifu_name, waifu_image_url) = resolve_waifu(&user.relationships, &included);
 
-    // ── Request 2: User stats ──────────────────────────────────────────────
+    // ── Request 2: Stats ───────────────────────────────────────────────────
     let stats_url = format!("https://kitsu.app/api/edge/users/{}/stats", user.id);
 
     let stats_resp = client
@@ -203,17 +284,21 @@ pub async fn fetch_kitsu_profile(username: &str) -> Result<KitsuProfile, String>
         .await
         .map_err(|e| format!("Network error fetching stats: {}", e))?;
 
-    let stats_body: KitsuStatsResponse = stats_resp
-        .json()
+    let stats_text = stats_resp
+        .text()
         .await
-        .map_err(|e| format!("Failed to parse stats response: {}", e))?;
+        .map_err(|e| format!("Failed to read stats body: {}", e))?;
+
+    let stats_body: KitsuStatsResponse =
+        serde_json::from_str(&stats_text).map_err(|e| format!("Failed to parse stats: {}", e))?;
 
     let (anime_stats, manga_stats) = parse_stats(stats_body.data);
 
+    let user_id = user.id;
     Ok(KitsuProfile {
-        id: user.id,
-        name: attrs.name,
-        slug: attrs.slug,
+        id: user_id.clone(),
+        name: attrs.name.unwrap_or_else(|| username.to_string()),
+        slug: attrs.slug.unwrap_or_else(|| user_id.clone()),
         about: attrs.about,
         location: attrs.location,
         gender: attrs.gender,
@@ -229,7 +314,7 @@ pub async fn fetch_kitsu_profile(username: &str) -> Result<KitsuProfile, String>
     })
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── 4. Helpers ───────────────────────────────────────────────────────────────
 
 async fn fetch_user(
     client: &reqwest::Client,
@@ -253,12 +338,15 @@ async fn fetch_user(
         return Err(format!("Kitsu API error: HTTP {}", resp.status().as_u16()));
     }
 
-    resp.json::<KitsuUserResponse>()
+    let body = resp
+        .text()
         .await
+        .map_err(|e| format!("Failed to read profile body: {}", e))?;
+
+    serde_json::from_str::<KitsuUserResponse>(&body)
         .map_err(|e| format!("Failed to parse profile response: {}", e))
 }
 
-/// Extracts waifu name and image from the included sideloaded resources
 fn resolve_waifu(
     relationships: &Option<KitsuUserRelationships>,
     included: &[KitsuIncluded],
@@ -289,7 +377,9 @@ fn resolve_waifu(
     (None, None)
 }
 
-/// Parses the flat stats array into typed anime and manga stat structs
+/// Parses the stats array using the real API shape:
+/// kind = "anime-category-breakdown" | "anime-amount-consumed" | "manga-*"
+/// statsData = { categories: {...} } or { time, media, units, completed }
 fn parse_stats(stats: Vec<KitsuStatData>) -> (Option<KitsuAnimeStats>, Option<KitsuMangaStats>) {
     let mut anime_time: f64 = 0.0;
     let mut anime_completed: f64 = 0.0;
@@ -302,21 +392,25 @@ fn parse_stats(stats: Vec<KitsuStatData>) -> (Option<KitsuAnimeStats>, Option<Ki
     let mut has_manga = false;
 
     for stat in stats {
-        let val = &stat.attributes.value;
-        match stat.attributes.stat_type.as_str() {
+        let kind = stat.attributes.kind.as_str();
+        let data = &stat.attributes.stats_data.0;
+
+        match kind {
             "anime-amount-consumed" => {
                 has_anime = true;
-                anime_time = val["time"].as_f64().unwrap_or(0.0);
-                anime_completed = val["completed"].as_f64().unwrap_or(0.0);
+                anime_time = data["time"].as_f64().unwrap_or(0.0);
+                anime_completed = data["completed"].as_f64().unwrap_or(0.0);
             }
             "anime-category-breakdown" => {
-                if let Some(obj) = val.as_object() {
-                    anime_genres = obj
+                // categories lives one level deeper: statsData.categories
+                if let Some(cats) = data["categories"].as_object() {
+                    anime_genres = cats
                         .iter()
                         .map(|(genre, count)| KitsuGenreEntry {
                             genre: genre.clone(),
                             count: count.as_f64().unwrap_or(0.0),
                         })
+                        .filter(|e| e.count > 0.0)
                         .collect();
                     anime_genres.sort_by(|a, b| {
                         b.count
@@ -327,18 +421,18 @@ fn parse_stats(stats: Vec<KitsuStatData>) -> (Option<KitsuAnimeStats>, Option<Ki
             }
             "manga-amount-consumed" => {
                 has_manga = true;
-                // `media` = number of chapters read in the Kitsu stats schema
-                manga_chapters = val["media"].as_f64().unwrap_or(0.0);
-                manga_completed = val["completed"].as_f64().unwrap_or(0.0);
+                manga_chapters = data["media"].as_f64().unwrap_or(0.0);
+                manga_completed = data["completed"].as_f64().unwrap_or(0.0);
             }
             "manga-category-breakdown" => {
-                if let Some(obj) = val.as_object() {
-                    manga_genres = obj
+                if let Some(cats) = data["categories"].as_object() {
+                    manga_genres = cats
                         .iter()
                         .map(|(genre, count)| KitsuGenreEntry {
                             genre: genre.clone(),
                             count: count.as_f64().unwrap_or(0.0),
                         })
+                        .filter(|e| e.count > 0.0)
                         .collect();
                     manga_genres.sort_by(|a, b| {
                         b.count

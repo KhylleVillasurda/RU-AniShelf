@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTheme } from "../contexts/ThemeContext";
+import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from "recharts";
 import {
   User,
   Settings,
@@ -14,9 +15,9 @@ import {
   Heart,
   BookOpen,
 } from "lucide-react";
+import { BsClock, BsCheckCircleFill, BsBookFill } from "react-icons/bs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-// These mirror the Rust KitsuProfile struct returned by fetch_kitsu_profile.
 
 interface KitsuGenreEntry {
   genre: string;
@@ -79,7 +80,6 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Genre chart colours — cycling palette
 const GENRE_COLORS = [
   "#ff6b9d",
   "#c77dff",
@@ -98,7 +98,236 @@ const GENRE_COLORS = [
   "#2ec4b6",
 ];
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Active slice — expands on hover ─────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ActiveSlice(props: any) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } =
+    props;
+  return (
+    <Sector
+      cx={cx}
+      cy={cy}
+      innerRadius={innerRadius - 2}
+      outerRadius={outerRadius + 5}
+      startAngle={startAngle}
+      endAngle={endAngle}
+      fill={fill}
+      opacity={1}
+    />
+  );
+}
+
+// ─── Genre Wheel — NO Recharts Tooltip to avoid overlap ──────────────────────
+
+function GenreWheel({ genres }: { genres: KitsuGenreEntry[] }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const top = genres.slice(0, 10);
+  const total = top.reduce((s, g) => s + g.count, 0);
+  const data = top.map((g) => ({ name: g.genre, value: g.count, total }));
+  const maxCount = top[0]?.count ?? 1;
+
+  const displayIndex = activeIndex ?? 0;
+  const activeGenre = top[displayIndex]?.genre ?? "";
+  const activePct =
+    total > 0
+      ? (((top[displayIndex]?.count ?? 0) / total) * 100).toFixed(1)
+      : "0";
+  const activeColor = GENRE_COLORS[displayIndex % GENRE_COLORS.length];
+
+  const onMouseEnter = useCallback((_: unknown, index: number) => {
+    setActiveIndex(index);
+  }, []);
+  const onMouseLeave = useCallback(() => setActiveIndex(null), []);
+
+  if (top.length === 0) {
+    return (
+      <div
+        className="h-20 rounded-lg flex items-center justify-center border border-dashed text-[11px]"
+        style={{
+          borderColor: "var(--border-subtle)",
+          color: "var(--text-muted)",
+        }}
+      >
+        No genre data available
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-6 items-center">
+      {/* Donut — NO <Tooltip> component, info shown in centre label only */}
+      <div
+        className="relative flex-shrink-0"
+        style={{ width: 160, height: 160 }}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            <Pie
+              {...({} as any)}
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={46}
+              outerRadius={66}
+              dataKey="value"
+              startAngle={90}
+              endAngle={-270}
+              strokeWidth={2}
+              stroke="var(--bg-elevated)"
+              activeIndex={activeIndex ?? undefined}
+              activeShape={ActiveSlice}
+              onMouseEnter={onMouseEnter}
+              onMouseLeave={onMouseLeave}
+            >
+              {data.map((_, i) => (
+                <Cell
+                  key={i}
+                  fill={GENRE_COLORS[i % GENRE_COLORS.length]}
+                  opacity={activeIndex === null || activeIndex === i ? 1 : 0.35}
+                />
+              ))}
+            </Pie>
+            {/* Tooltip intentionally omitted — avoids overlap with centre label */}
+          </PieChart>
+        </ResponsiveContainer>
+
+        {/* Centre label — sole source of hover info, no floating tooltip */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+          <span
+            className="text-[8px] uppercase tracking-widest leading-none mb-1"
+            style={{ color: "var(--text-muted)" }}
+          >
+            {activeIndex !== null ? "genre" : "top"}
+          </span>
+          <span
+            className="font-black leading-tight px-1"
+            style={{
+              color: activeColor,
+              fontFamily: "var(--font-display)",
+              fontSize: activeGenre.length > 9 ? "9px" : "11px",
+              textShadow: `0 0 8px ${activeColor}55`,
+              maxWidth: 80,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {activeGenre}
+          </span>
+          <span
+            className="text-[10px] mt-0.5 font-bold tabular-nums"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            {activePct}%
+          </span>
+        </div>
+      </div>
+
+      {/* Genre bar list */}
+      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+        {top.map((g, i) => {
+          const pct = maxCount > 0 ? (g.count / maxCount) * 100 : 0;
+          const color = GENRE_COLORS[i % GENRE_COLORS.length];
+          const isActive = (activeIndex ?? 0) === i;
+          return (
+            <div
+              key={g.genre}
+              className="flex items-center gap-2 cursor-default"
+              onMouseEnter={() => setActiveIndex(i)}
+              onMouseLeave={() => setActiveIndex(null)}
+            >
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0 transition-all duration-150"
+                style={{
+                  background: color,
+                  transform: isActive ? "scale(1.5)" : "scale(1)",
+                  boxShadow: isActive ? `0 0 5px ${color}` : "none",
+                }}
+              />
+              <span
+                className="text-[11px] w-24 flex-shrink-0 truncate transition-colors duration-150"
+                style={{
+                  color: isActive
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
+                }}
+              >
+                {g.genre}
+              </span>
+              <div
+                className="flex-1 h-1.5 rounded-full overflow-hidden"
+                style={{ background: "var(--bg-surface)" }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${pct}%`,
+                    background: color,
+                    opacity: isActive ? 1 : 0.6,
+                    boxShadow: isActive ? `0 0 6px ${color}` : "none",
+                  }}
+                />
+              </div>
+              <span
+                className="text-[10px] w-7 text-right flex-shrink-0 tabular-nums"
+                style={{
+                  color: isActive
+                    ? "var(--text-secondary)"
+                    : "var(--text-muted)",
+                }}
+              >
+                {Math.round(g.count)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Stats Card ───────────────────────────────────────────────────────────────
+
+function StatsCard({
+  title,
+  icon,
+  genres,
+  statsLine,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  genres: KitsuGenreEntry[];
+  statsLine: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-xl border p-5 flex flex-col gap-4"
+      style={{
+        background: "var(--bg-elevated)",
+        borderColor: "var(--border-subtle)",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span style={{ color: "var(--accent)" }}>{icon}</span>
+        <span
+          className="text-sm font-black"
+          style={{
+            color: "var(--text-primary)",
+            fontFamily: "var(--font-display)",
+          }}
+        >
+          {title}
+        </span>
+      </div>
+      <div className="flex gap-2 flex-wrap">{statsLine}</div>
+      <GenreWheel genres={genres} />
+    </div>
+  );
+}
+
+// ─── Stat Pill ────────────────────────────────────────────────────────────────
 
 function StatPill({
   label,
@@ -137,7 +366,15 @@ function StatPill({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string | null }) {
+// ─── Info Row ─────────────────────────────────────────────────────────────────
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode | null;
+}) {
   if (!value) return null;
   return (
     <div className="flex items-start gap-2">
@@ -154,204 +391,7 @@ function InfoRow({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function GenreBar({
-  genre,
-  count,
-  max,
-  color,
-}: {
-  genre: string;
-  count: number;
-  max: number;
-  color: string;
-}) {
-  const pct = max > 0 ? (count / max) * 100 : 0;
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        className="text-[11px] w-28 flex-shrink-0 truncate"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        {genre}
-      </span>
-      <div
-        className="flex-1 h-1.5 rounded-full"
-        style={{ background: "var(--bg-surface)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-      <span
-        className="text-[10px] w-6 text-right flex-shrink-0"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {Math.round(count)}
-      </span>
-    </div>
-  );
-}
-
-function DonutChart({
-  genres,
-  size = 120,
-}: {
-  genres: KitsuGenreEntry[];
-  size?: number;
-}) {
-  const top = genres.slice(0, 10);
-  const total = top.reduce((s, g) => s + g.count, 0);
-  if (total === 0) return null;
-
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.38;
-  const innerR = size * 0.24;
-  const strokeW = r - innerR;
-
-  // Build arc paths
-  let cumAngle = -Math.PI / 2;
-  const arcs = top.map((g, i) => {
-    const slice = (g.count / total) * 2 * Math.PI;
-    const startAngle = cumAngle;
-    cumAngle += slice;
-    const endAngle = cumAngle;
-
-    const midR = innerR + strokeW / 2;
-    const x1 = cx + midR * Math.cos(startAngle);
-    const y1 = cy + midR * Math.sin(startAngle);
-    const x2 = cx + midR * Math.cos(endAngle);
-    const y2 = cy + midR * Math.sin(endAngle);
-    const largeArc = slice > Math.PI ? 1 : 0;
-
-    return {
-      path: `M ${x1} ${y1} A ${midR} ${midR} 0 ${largeArc} 1 ${x2} ${y2}`,
-      color: GENRE_COLORS[i % GENRE_COLORS.length],
-      genre: g.genre,
-      pct: Math.round((g.count / total) * 100),
-    };
-  });
-
-  const topGenre = top[0]?.genre ?? "";
-
-  return (
-    <div
-      className="relative flex-shrink-0"
-      style={{ width: size, height: size }}
-    >
-      <svg width={size} height={size}>
-        {arcs.map((arc, i) => (
-          <path
-            key={i}
-            d={arc.path}
-            fill="none"
-            stroke={arc.color}
-            strokeWidth={strokeW}
-            strokeLinecap="butt"
-          />
-        ))}
-      </svg>
-      {/* Centre label */}
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none"
-        style={{ padding: innerR * 0.3 }}
-      >
-        <span
-          className="text-[9px] uppercase tracking-widest leading-tight"
-          style={{ color: "var(--text-muted)" }}
-        >
-          top genre
-        </span>
-        <span
-          className="text-[10px] font-black leading-tight mt-0.5"
-          style={{
-            color: "var(--accent)",
-            fontFamily: "var(--font-display)",
-            maxWidth: innerR * 1.6,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {topGenre}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StatsCard({
-  title,
-  icon,
-  genres,
-  statsLine,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  genres: KitsuGenreEntry[];
-  statsLine: React.ReactNode;
-}) {
-  const top = genres.slice(0, 8);
-  const max = top[0]?.count ?? 1;
-
-  return (
-    <div
-      className="rounded-xl border p-5 flex flex-col gap-4"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border-subtle)",
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <span style={{ color: "var(--accent)" }}>{icon}</span>
-        <span
-          className="text-sm font-black"
-          style={{
-            color: "var(--text-primary)",
-            fontFamily: "var(--font-display)",
-          }}
-        >
-          {title}
-        </span>
-      </div>
-
-      {/* Stats summary line */}
-      <div className="flex gap-2 flex-wrap">{statsLine}</div>
-
-      {/* Donut + genre bars */}
-      {top.length > 0 ? (
-        <div className="flex gap-5 items-start">
-          <DonutChart genres={top} size={130} />
-          <div className="flex-1 flex flex-col gap-2 pt-1">
-            {top.map((g, i) => (
-              <GenreBar
-                key={g.genre}
-                genre={g.genre}
-                count={g.count}
-                max={max}
-                color={GENRE_COLORS[i % GENRE_COLORS.length]}
-              />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div
-          className="h-20 rounded-lg flex items-center justify-center border border-dashed text-[11px]"
-          style={{
-            borderColor: "var(--border-subtle)",
-            color: "var(--text-muted)",
-          }}
-        >
-          No genre data available
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const { theme } = useTheme();
@@ -361,7 +401,6 @@ export default function ProfilePage() {
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1 — read saved username from SQLite settings
   useEffect(() => {
     async function loadUsername() {
       try {
@@ -377,7 +416,6 @@ export default function ProfilePage() {
     loadUsername();
   }, []);
 
-  // Step 2 — fetch Kitsu profile once username is known
   useEffect(() => {
     if (!username) return;
     fetchProfile(username);
@@ -398,7 +436,8 @@ export default function ProfilePage() {
     }
   }
 
-  // ── Loading: reading username from DB ──────────────────────────────────────
+  // ── States ─────────────────────────────────────────────────────────────────
+
   if (loadingUsername) {
     return (
       <div className="flex items-center justify-center h-full gap-3">
@@ -414,7 +453,6 @@ export default function ProfilePage() {
     );
   }
 
-  // ── Empty state: no username set ───────────────────────────────────────────
   if (!username) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-5">
@@ -450,7 +488,6 @@ export default function ProfilePage() {
     );
   }
 
-  // ── Fetching: spinner while API call is in flight ──────────────────────────
   if (fetching) {
     return (
       <div className="flex items-center justify-center h-full gap-3">
@@ -466,7 +503,6 @@ export default function ProfilePage() {
     );
   }
 
-  // ── Error state ────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
@@ -512,148 +548,138 @@ export default function ProfilePage() {
       className="flex flex-col gap-5 max-w-2xl pb-8"
       style={{ fontFamily: theme.fontBody }}
     >
-      {/* ── Profile Card ────────────────────────────────────────────────────── */}
-      <div
-        className="rounded-xl border overflow-hidden"
-        style={{
-          background: theme.bgElevated,
-          borderColor: theme.borderSubtle,
-        }}
-      >
-        {/* Cover image banner */}
-        <div
-          className="w-full h-28 relative"
-          style={{ background: theme.bgSurface }}
-        >
+      {/* ── Cover + avatar header — Twitter/Kitsu style absolute positioning ───── */}
+      <div className="relative">
+        {/* Cover image — fully natural size, div grows to fit the image exactly */}
+        <div className="w-full rounded-xl overflow-hidden relative">
           {profile.cover_url ? (
             <img
               src={profile.cover_url}
               alt="cover"
-              className="w-full h-full object-cover"
+              style={{ display: "block", width: "100%", height: "auto" }}
             />
           ) : (
             <div
-              className="w-full h-full"
               style={{
-                background: `linear-gradient(135deg, ${theme.accentDim} 0%, ${theme.bgSurface} 100%)`,
+                height: 96,
+                background: `linear-gradient(135deg, ${theme.accentDim} 0%, ${theme.bgBase} 100%)`,
               }}
             />
           )}
-          {/* Refresh button overlay */}
+          {/* Subtle bottom fade */}
+          <div
+            className="absolute inset-x-0 bottom-0 h-10"
+            style={{
+              background: `linear-gradient(to bottom, transparent, rgba(0,0,0,0.35))`,
+            }}
+          />
+          {/* Refresh button */}
           <button
             onClick={() => fetchProfile(username)}
             className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1.5
-              rounded-md text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm
-              transition-all border"
+              rounded-md text-[10px] font-bold uppercase tracking-widest border backdrop-blur-sm transition-all"
             style={{
-              background: "rgba(0,0,0,0.45)",
+              background: "rgba(0,0,0,0.5)",
               borderColor: "rgba(255,255,255,0.08)",
-              color: theme.textMuted,
+              color: "rgba(255,255,255,0.7)",
             }}
-            title="Refresh profile"
           >
             <RefreshCw size={10} />
             Refresh
           </button>
         </div>
 
-        {/* Avatar + name row */}
-        <div className="px-5 pb-5">
-          <div className="flex items-end gap-4 -mt-8 mb-4">
-            {/* Avatar */}
-            <div
-              className="w-16 h-16 rounded-xl border-2 overflow-hidden flex-shrink-0 flex items-center justify-center"
-              style={{
-                borderColor: theme.bgElevated,
-                background: theme.bgSurface,
-              }}
-            >
-              {profile.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt={profile.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <User size={24} style={{ color: theme.textMuted }} />
-              )}
-            </div>
-
-            {/* Name + slug */}
-            <div className="pb-1 flex-1 min-w-0">
-              <h2
-                className="text-xl font-black leading-none truncate"
-                style={{
-                  color: theme.textPrimary,
-                  fontFamily: theme.fontDisplay,
-                  textShadow: theme.glowAccent,
-                }}
-              >
-                {profile.name}
-              </h2>
-              <p
-                className="text-[11px] mt-0.5"
-                style={{ color: theme.textMuted }}
-              >
-                kitsu.app/users/{profile.slug}
-              </p>
-            </div>
-          </div>
-
-          {/* About / bio */}
-          {profile.about && (
-            <p
-              className="text-xs leading-relaxed mb-4 line-clamp-3"
-              style={{ color: theme.textSecondary }}
-            >
-              {profile.about}
-            </p>
+        {/* Avatar — absolutely pinned to bottom-left of cover, half overhanging */}
+        <div
+          className="absolute left-4 w-20 h-20 rounded-xl overflow-hidden flex items-center justify-center"
+          style={{
+            bottom:
+              "-2.25rem" /* half of avatar height (h-20 = 5rem → half = 2.5rem, minus 2px border) */,
+            border: `3px solid ${theme.bgBase}`,
+            background: theme.bgSurface,
+          }}
+        >
+          {profile.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={profile.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <User size={26} style={{ color: theme.textMuted }} />
           )}
-
-          {/* Meta rows */}
-          <div className="flex flex-col gap-1.5">
-            <InfoRow
-              label="Gender"
-              value={profile.gender ? capitalize(profile.gender) : null}
-            />
-            <InfoRow
-              label="Location"
-              value={
-                profile.location
-                  ? ((
-                      <span className="flex items-center gap-1">
-                        <MapPin size={10} />
-                        {profile.location}
-                      </span>
-                    ) as unknown as string)
-                  : null
-              }
-            />
-            <InfoRow label="Birthday" value={formatDate(profile.birthday)} />
-            <InfoRow
-              label="Joined"
-              value={
-                profile.created_at
-                  ? ((
-                      <span className="flex items-center gap-1">
-                        <Calendar size={10} />
-                        {formatDate(profile.created_at)}
-                      </span>
-                    ) as unknown as string)
-                  : null
-              }
-            />
-            {profile.waifu_name && (
-              <InfoRow
-                label={profile.waifu_or_husbando ?? "Waifu"}
-                value={profile.waifu_name}
-              />
-            )}
-          </div>
         </div>
       </div>
 
-      {/* ── Anime Stats summary pills ────────────────────────────────────────── */}
+      {/* ── Name row — left-padded to clear the avatar ───────────────────────── */}
+      {/* pl-28 = avatar left offset (4) + avatar width (20) + gap (4) = 28 */}
+      <div className="pl-28 pr-1 pt-1">
+        <h2
+          className="text-xl font-black leading-none truncate"
+          style={{
+            color: theme.textPrimary,
+            fontFamily: theme.fontDisplay,
+            textShadow: theme.glowAccent,
+          }}
+        >
+          {profile.name}
+        </h2>
+        <p className="text-[11px] mt-0.5" style={{ color: theme.textMuted }}>
+          kitsu.app/users/{profile.slug}
+        </p>
+      </div>
+
+      {/* ── Bio + meta — plain, no card ───────────────────────────────────────── */}
+      <div className="flex flex-col gap-3 px-1">
+        {profile.about && (
+          <p
+            className="text-xs leading-relaxed"
+            style={{ color: theme.textSecondary }}
+          >
+            {profile.about}
+          </p>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <InfoRow
+            label="Gender"
+            value={profile.gender ? capitalize(profile.gender) : null}
+          />
+          <InfoRow
+            label="Location"
+            value={
+              profile.location ? (
+                <span className="flex items-center gap-1">
+                  <MapPin size={10} />
+                  {profile.location}
+                </span>
+              ) : null
+            }
+          />
+          <InfoRow label="Birthday" value={formatDate(profile.birthday)} />
+          <InfoRow
+            label="Joined"
+            value={
+              profile.created_at ? (
+                <span className="flex items-center gap-1">
+                  <Calendar size={10} />
+                  {formatDate(profile.created_at)}
+                </span>
+              ) : null
+            }
+          />
+          {profile.waifu_name && (
+            <InfoRow
+              label={profile.waifu_or_husbando ?? "Waifu"}
+              value={profile.waifu_name}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ── Divider ───────────────────────────────────────────────────────────── */}
+      <div className="h-px" style={{ background: theme.borderSubtle }} />
+
+      {/* ── Summary stat pills ────────────────────────────────────────────────── */}
       {profile.anime_stats && (
         <div className="flex gap-3">
           <StatPill
@@ -662,7 +688,7 @@ export default function ProfilePage() {
             icon={<Clock size={14} />}
           />
           <StatPill
-            label="Completed"
+            label="Anime Done"
             value={String(Math.round(profile.anime_stats.completed))}
             icon={<CheckCircle size={14} />}
           />
@@ -676,7 +702,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ── Anime Stats Card ─────────────────────────────────────────────────── */}
+      {/* ── Anime Stats card ──────────────────────────────────────────────────── */}
       {profile.anime_stats && (
         <StatsCard
           title="Anime Stats"
@@ -687,27 +713,44 @@ export default function ProfilePage() {
               <span
                 className="text-[11px] px-2 py-1 rounded-md"
                 style={{
-                  background: theme.bgSurface,
-                  color: theme.textSecondary,
+                  background: "var(--bg-surface)",
+                  color: "var(--text-secondary)",
                 }}
               >
-                ⏱ {animeDays} watched
+                <BsClock
+                  size={11}
+                  style={{
+                    display: "inline",
+                    marginRight: 4,
+                    verticalAlign: "middle",
+                  }}
+                />
+                {animeDays} watched
               </span>
               <span
                 className="text-[11px] px-2 py-1 rounded-md"
                 style={{
-                  background: theme.bgSurface,
-                  color: theme.textSecondary,
+                  background: "var(--bg-surface)",
+                  color: "var(--text-secondary)",
                 }}
               >
-                ✅ {Math.round(profile.anime_stats.completed)} completed
+                <BsCheckCircleFill
+                  size={11}
+                  style={{
+                    display: "inline",
+                    marginRight: 4,
+                    verticalAlign: "middle",
+                    color: "#06d6a0",
+                  }}
+                />
+                {Math.round(profile.anime_stats.completed)} completed
               </span>
             </>
           }
         />
       )}
 
-      {/* ── Manga Stats Card ──────────────────────────────────────────────────── */}
+      {/* ── Manga Stats card ──────────────────────────────────────────────────── */}
       {profile.manga_stats && (
         <StatsCard
           title="Manga Stats"
@@ -718,20 +761,37 @@ export default function ProfilePage() {
               <span
                 className="text-[11px] px-2 py-1 rounded-md"
                 style={{
-                  background: theme.bgSurface,
-                  color: theme.textSecondary,
+                  background: "var(--bg-surface)",
+                  color: "var(--text-secondary)",
                 }}
               >
-                📖 {Math.round(profile.manga_stats.chapters_read)} chapters
+                <BsBookFill
+                  size={11}
+                  style={{
+                    display: "inline",
+                    marginRight: 4,
+                    verticalAlign: "middle",
+                  }}
+                />
+                {Math.round(profile.manga_stats.chapters_read)} chapters
               </span>
               <span
                 className="text-[11px] px-2 py-1 rounded-md"
                 style={{
-                  background: theme.bgSurface,
-                  color: theme.textSecondary,
+                  background: "var(--bg-surface)",
+                  color: "var(--text-secondary)",
                 }}
               >
-                ✅ {Math.round(profile.manga_stats.completed)} completed
+                <BsCheckCircleFill
+                  size={11}
+                  style={{
+                    display: "inline",
+                    marginRight: 4,
+                    verticalAlign: "middle",
+                    color: "#06d6a0",
+                  }}
+                />
+                {Math.round(profile.manga_stats.completed)} completed
               </span>
             </>
           }

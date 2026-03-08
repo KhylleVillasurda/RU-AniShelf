@@ -796,7 +796,7 @@ export default function SettingsPage() {
               />
               {settings.kitsu_username.trim() && (
                 <a
-                  href={`https://kitsu.app/users/${settings.kitsu_username.trim()}`}
+                  href={`https://kitsu.io/users/${settings.kitsu_username.trim()}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 px-4 py-2 rounded-md border text-sm transition-all flex-shrink-0"
