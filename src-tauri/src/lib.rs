@@ -106,6 +106,22 @@ struct MalResultDto {
     season_year: Option<i32>,
 }
 
+#[derive(serde::Serialize)]
+struct KitsuResultDto {
+    kitsu_id: i64,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    kitsu_score: Option<f64>,
+    cover_url: Option<String>,
+    genres: Vec<String>,
+    status: Option<String>,
+    format: Option<String>,
+    season_year: Option<i32>,
+}
+
 // ─── 3. Library Folder Management ────────────────────────────────────────────
 
 #[tauri::command]
@@ -268,6 +284,41 @@ async fn search_mal_multi(
             status: m.status,
             format: m.format,
             season_year: m.season_year,
+        })
+        .collect())
+}
+
+/// Searches Kitsu for multiple results — no API key required
+#[tauri::command]
+async fn search_kitsu_multi(title: String) -> Result<Vec<KitsuResultDto>, String> {
+    // Trim to first 4 words for cleaner Kitsu queries (same heuristic as MAL)
+    let search_title = title
+        .split_whitespace()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(',', "")
+        .replace('.', "")
+        .trim()
+        .to_string();
+
+    let results = metadata::search_kitsu_multi(&search_title).await?;
+
+    Ok(results
+        .into_iter()
+        .map(|k| KitsuResultDto {
+            kitsu_id: k.kitsu_id,
+            title: k.title,
+            title_english: k.title_english,
+            title_native: k.title_native,
+            synopsis: k.synopsis,
+            episode_count: k.episode_count,
+            kitsu_score: k.kitsu_score,
+            cover_url: k.cover_url,
+            genres: k.genres,
+            status: k.status,
+            format: k.format,
+            season_year: k.season_year,
         })
         .collect())
 }
@@ -736,6 +787,7 @@ pub fn run() {
             fetch_metadata,
             search_anime_multi,
             search_mal_multi,
+            search_kitsu_multi,
             // Library
             get_library,
             save_series_to_library,
