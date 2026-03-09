@@ -7,11 +7,13 @@ import {
 } from "react";
 import { cinematicTheme, Theme } from "../themes/cinematic";
 import { cliTheme } from "../themes/cli";
+import { everforest_dark } from "../themes/everforestdark";
 import { invoke } from "@tauri-apps/api/core";
 
 export const themes = {
   cinematic: cinematicTheme,
   cli: cliTheme,
+  everforest_dark: everforest_dark,
 };
 
 export type ThemeId = keyof typeof themes;
