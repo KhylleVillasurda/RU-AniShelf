@@ -474,6 +474,7 @@ export default function SettingsPage() {
             {[
               { value: "anilist", label: "AniList", hint: "No API key needed" },
               { value: "mal", label: "MyAnimeList", hint: "Requires API key" },
+              { value: "kitsu", label: "Kitsu", hint: "No API key needed" },
               { value: "both", label: "Both", hint: "AniList + MAL merged" },
             ].map((opt) => {
               const isActive = settings.metadata_source === opt.value;
@@ -796,7 +797,7 @@ export default function SettingsPage() {
               />
               {settings.kitsu_username.trim() && (
                 <a
-                  href={`https://kitsu.io/users/${settings.kitsu_username.trim()}`}
+                  href={`https://kitsu.app/users/${settings.kitsu_username.trim()}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 px-4 py-2 rounded-md border text-sm transition-all flex-shrink-0"

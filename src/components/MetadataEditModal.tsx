@@ -4,6 +4,21 @@ import { Search, Loader2, X, Pencil } from "lucide-react";
 import AniListPickerModal, { SearchResult } from "./AniListPickerModal";
 import { MalResult } from "./MetadataFieldPickerModal";
 
+interface KitsuResult {
+  kitsu_id: number;
+  title: string;
+  title_english: string | null;
+  title_native: string | null;
+  synopsis: string | null;
+  episode_count: number | null;
+  kitsu_score: number | null;
+  cover_url: string | null;
+  genres: string[];
+  status: string | null;
+  format: string | null;
+  season_year: number | null;
+}
+
 interface MetadataEditModalProps {
   seriesId: number;
   currentTitle: string;
@@ -35,7 +50,8 @@ export default function MetadataEditModal({
   }, []);
 
   const isMal = metadataSource === "mal";
-  const sourceLabel = isMal ? "MyAnimeList" : "AniList";
+  const isKitsu = metadataSource === "kitsu";
+  const sourceLabel = isMal ? "MyAnimeList" : isKitsu ? "Kitsu" : "AniList";
 
   async function handleSearch() {
     if (!query.trim()) return;
@@ -66,6 +82,27 @@ export default function MetadataEditModal({
           status: m.status,
           format: m.format,
           season_year: m.season_year,
+        }));
+      } else if (isKitsu) {
+        // ── Kitsu mode — no API key needed
+        // Negative kitsu_id sentinel keeps the same anilist_id > 0 guard on save.
+        const kitsuResults = await invoke<KitsuResult[]>("search_kitsu_multi", {
+          title: query.trim(),
+        });
+
+        results = kitsuResults.map((k) => ({
+          anilist_id: -k.kitsu_id,
+          title: k.title,
+          title_english: k.title_english,
+          title_native: k.title_native,
+          synopsis: k.synopsis,
+          cover_url: k.cover_url,
+          anilist_score: k.kitsu_score,
+          episode_count: k.episode_count,
+          genres: k.genres,
+          status: k.status,
+          format: k.format,
+          season_year: k.season_year,
         }));
       } else {
         // ── AniList mode (default)
@@ -209,7 +246,9 @@ export default function MetadataEditModal({
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                 {isMal
                   ? 'Try the Japanese title for better MAL results. e.g. "Azumanga Daioh" instead of "Azumanga Daiou"'
-                  : 'Try the Japanese title if the English one doesn\'t match. e.g. "Tate no Yuusha" instead of "Rising of the Shield Hero"'}
+                  : isKitsu
+                    ? 'Kitsu searches by canonical title. Try the romaji title if results are off. e.g. "Shingeki no Kyojin"'
+                    : 'Try the Japanese title if the English one doesn\'t match. e.g. "Tate no Yuusha" instead of "Rising of the Shield Hero"'}
               </p>
               {/* Shown while the user has time to read — before they hit Search */}
               <p

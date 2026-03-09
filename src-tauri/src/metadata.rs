@@ -438,6 +438,222 @@ pub async fn search_mal_multi(title: &str, client_id: &str) -> Result<Vec<MalMet
     Ok(results)
 }
 
+// ─── Kitsu ────────────────────────────────────────────────────────────────────
+// Kitsu uses the JSON:API spec, so the response shape is different from
+// AniList/MAL. Genres come via an `include=categories` sideload.
+
+#[derive(Deserialize)]
+struct KitsuSearchResponse {
+    data: Option<Vec<KitsuAnimeData>>,
+    included: Option<Vec<KitsuIncluded>>,
+}
+
+#[derive(Deserialize)]
+struct KitsuAnimeData {
+    id: Option<String>,
+    attributes: Option<KitsuAttributes>,
+    relationships: Option<KitsuRelationships>,
+}
+
+#[derive(Deserialize)]
+struct KitsuAttributes {
+    #[serde(rename = "canonicalTitle")]
+    canonical_title: Option<String>,
+    titles: Option<KitsuTitles>,
+    synopsis: Option<String>,
+    #[serde(rename = "episodeCount")]
+    episode_count: Option<i32>,
+    #[serde(rename = "averageRating")]
+    average_rating: Option<String>, // e.g. "82.67" — Kitsu returns a string
+    #[serde(rename = "posterImage")]
+    poster_image: Option<KitsuImage>,
+    status: Option<String>,
+    subtype: Option<String>,    // "TV", "OVA", "movie", etc.
+    #[serde(rename = "startDate")]
+    start_date: Option<String>, // "YYYY-MM-DD"
+}
+
+#[derive(Deserialize)]
+struct KitsuTitles {
+    en: Option<String>,
+    en_jp: Option<String>,
+    ja_jp: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct KitsuImage {
+    large: Option<String>,
+    medium: Option<String>,
+    original: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct KitsuRelationships {
+    categories: Option<KitsuCategoryRel>,
+}
+
+#[derive(Deserialize)]
+struct KitsuCategoryRel {
+    data: Option<Vec<KitsuRelData>>,
+}
+
+#[derive(Deserialize)]
+struct KitsuRelData {
+    id: String,
+}
+
+/// Sideloaded record from the `included` array (categories, etc.)
+#[derive(Deserialize)]
+struct KitsuIncluded {
+    id: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    attributes: Option<KitsuIncludedAttributes>,
+}
+
+#[derive(Deserialize)]
+struct KitsuIncludedAttributes {
+    title: Option<String>, // category name
+}
+
+/// Public metadata result for a Kitsu anime — mirrors MalMetadata shape
+#[derive(Debug, Serialize, Clone)]
+pub struct KitsuMetadata {
+    pub kitsu_id: i64,
+    pub title: String,
+    pub title_english: Option<String>,
+    pub title_native: Option<String>,
+    pub synopsis: Option<String>,
+    pub episode_count: Option<i32>,
+    pub kitsu_score: Option<f64>,
+    pub cover_url: Option<String>,
+    pub genres: Vec<String>,
+    pub status: Option<String>,
+    pub format: Option<String>,
+    pub season_year: Option<i32>,
+}
+
+/// Searches Kitsu for up to 8 results by title.
+/// No API key required — Kitsu's edge API is public.
+pub async fn search_kitsu_multi(title: &str) -> Result<Vec<KitsuMetadata>, String> {
+    let client = Client::builder()
+        .use_rustls_tls()
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    // include=categories sidecars the genre data in a single request
+    let url = format!(
+        "https://kitsu.io/api/edge/anime?filter[text]={}&page[limit]=8&include=categories",
+        urlencoding::encode(title)
+    );
+
+    let response = client
+        .get(&url)
+        .header("Accept", "application/vnd.api+json")
+        .header("Content-Type", "application/vnd.api+json")
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Kitsu API error: {}", response.status()));
+    }
+
+    let body: KitsuSearchResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+
+    let anime_list = body.data.unwrap_or_default();
+
+    if anime_list.is_empty() {
+        return Err(format!("No Kitsu results found for '{}'", title));
+    }
+
+    // Build id → name map from the sideloaded categories
+    let category_map: std::collections::HashMap<String, String> = body
+        .included
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|inc| inc.kind.as_deref() == Some("categories"))
+        .filter_map(|inc| Some((inc.id?, inc.attributes?.title?)))
+        .collect();
+
+    let results = anime_list
+        .into_iter()
+        .filter_map(|anime| {
+            let attrs = anime.attributes?;
+            let kitsu_id: i64 = anime.id?.parse().unwrap_or(0);
+
+            // Prefer canonicalTitle, then romanised en_jp, then English
+            let display_title = attrs
+                .canonical_title
+                .clone()
+                .or_else(|| attrs.titles.as_ref().and_then(|t| t.en_jp.clone()))
+                .or_else(|| attrs.titles.as_ref().and_then(|t| t.en.clone()))
+                .unwrap_or_else(|| title.to_string());
+
+            let title_english = attrs
+                .titles
+                .as_ref()
+                .and_then(|t| t.en.clone())
+                .filter(|s| !s.is_empty());
+
+            let title_native = attrs
+                .titles
+                .as_ref()
+                .and_then(|t| t.ja_jp.clone())
+                .filter(|s| !s.is_empty());
+
+            // averageRating is "0.00"–"100.00"; normalise to 0–10
+            let kitsu_score = attrs
+                .average_rating
+                .as_ref()
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(|s| (s / 10.0).round() / 1.0); // one decimal place
+
+            // Prefer large poster, fall back to medium, then original
+            let cover_url = attrs
+                .poster_image
+                .and_then(|img| img.large.or(img.medium).or(img.original));
+
+            // Extract year from "YYYY-MM-DD"
+            let season_year = attrs
+                .start_date
+                .as_ref()
+                .and_then(|d| d.split('-').next())
+                .and_then(|y| y.parse::<i32>().ok());
+
+            // Resolve genres via the category relationship IDs
+            let genres = anime
+                .relationships
+                .and_then(|r| r.categories)
+                .and_then(|c| c.data)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|rel| category_map.get(&rel.id).cloned())
+                .collect();
+
+            Some(KitsuMetadata {
+                kitsu_id,
+                title: display_title,
+                title_english,
+                title_native,
+                synopsis: attrs.synopsis,
+                episode_count: attrs.episode_count,
+                kitsu_score,
+                cover_url,
+                genres,
+                status: attrs.status,
+                format: attrs.subtype,
+                season_year,
+            })
+        })
+        .collect();
+
+    Ok(results)
+}
+
 /// Downloads a cover image and saves it locally
 /// Returns the local file path
 pub async fn download_cover(
