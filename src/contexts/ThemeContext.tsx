@@ -8,12 +8,18 @@ import {
 import { cinematicTheme, Theme } from "../themes/cinematic";
 import { cliTheme } from "../themes/cli";
 import { everforest_dark } from "../themes/everforestdark";
+import { obsidian } from "../themes/obsidian";
+import { meadow } from "../themes/meadow";
+import { succubus } from "../themes/succubus";
 import { invoke } from "@tauri-apps/api/core";
 
 export const themes = {
   cinematic: cinematicTheme,
   cli: cliTheme,
   everforest_dark: everforest_dark,
+  obsidian: obsidian,
+  meadow: meadow,
+  succebus: succubus,
 };
 
 export type ThemeId = keyof typeof themes;
