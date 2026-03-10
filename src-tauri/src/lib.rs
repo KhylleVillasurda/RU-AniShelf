@@ -15,12 +15,14 @@
 //   7. Watch History              (log, get, clear)
 //   8. Settings                   (key-value store)
 //   9. Utilities                  (open episode, get MAL client ID)
-//  10. App Initialization         (Tauri builder + command registration)
+//   10. Kitsu Integration          (fetch metadata by Kitsu slug)
+//   11. App Initialization         (Tauri builder + command registration)
 // =============================================================================
 
 // ─── 1. Module Imports & State ────────────────────────────────────────────────
 
 mod db;
+mod kitsu;
 mod metadata;
 mod scanner;
 
@@ -97,6 +99,22 @@ struct MalResultDto {
     synopsis: Option<String>,
     episode_count: Option<i32>,
     mal_score: Option<f64>,
+    cover_url: Option<String>,
+    genres: Vec<String>,
+    status: Option<String>,
+    format: Option<String>,
+    season_year: Option<i32>,
+}
+
+#[derive(serde::Serialize)]
+struct KitsuResultDto {
+    kitsu_id: i64,
+    title: String,
+    title_english: Option<String>,
+    title_native: Option<String>,
+    synopsis: Option<String>,
+    episode_count: Option<i32>,
+    kitsu_score: Option<f64>,
     cover_url: Option<String>,
     genres: Vec<String>,
     status: Option<String>,
@@ -266,6 +284,41 @@ async fn search_mal_multi(
             status: m.status,
             format: m.format,
             season_year: m.season_year,
+        })
+        .collect())
+}
+
+/// Searches Kitsu for multiple results — no API key required
+#[tauri::command]
+async fn search_kitsu_multi(title: String) -> Result<Vec<KitsuResultDto>, String> {
+    // Trim to first 4 words for cleaner Kitsu queries (same heuristic as MAL)
+    let search_title = title
+        .split_whitespace()
+        .take(4)
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(',', "")
+        .replace('.', "")
+        .trim()
+        .to_string();
+
+    let results = metadata::search_kitsu_multi(&search_title).await?;
+
+    Ok(results
+        .into_iter()
+        .map(|k| KitsuResultDto {
+            kitsu_id: k.kitsu_id,
+            title: k.title,
+            title_english: k.title_english,
+            title_native: k.title_native,
+            synopsis: k.synopsis,
+            episode_count: k.episode_count,
+            kitsu_score: k.kitsu_score,
+            cover_url: k.cover_url,
+            genres: k.genres,
+            status: k.status,
+            format: k.format,
+            season_year: k.season_year,
         })
         .collect())
 }
@@ -642,7 +695,80 @@ async fn get_mal_client_id(state: tauri::State<'_, DbState>) -> Result<String, S
         .unwrap_or_default())
 }
 
-// ─── 10. App Initialization ───────────────────────────────────────────────────
+// ─── 10. Kitsu Integration ───────────────────────────────────────────────────
+
+/// Fetches a public Kitsu user profile, bio, and anime/manga genre stats.
+/// Called by the ProfilePage — username comes from the kitsu_username setting.
+#[tauri::command]
+async fn fetch_kitsu_profile(username: String) -> Result<kitsu::KitsuProfile, String> {
+    kitsu::fetch_kitsu_profile(&username).await
+}
+
+/// Saves a serialised KitsuProfile JSON string to the kitsu_cache table.
+/// Called by the frontend after a successful fetch so data persists across sessions.
+/// Creates the table on first use — no db.rs migration needed.
+#[tauri::command]
+fn save_kitsu_cache(
+    state: tauri::State<DbState>,
+    username: String,
+    json: String,
+) -> Result<(), String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    // Create table if it doesn't exist yet (lazy migration)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS kitsu_cache (
+            username  TEXT PRIMARY KEY,
+            data      TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        );",
+    )
+    .map_err(|e| format!("DB error creating kitsu_cache table: {}", e))?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO kitsu_cache (username, data, cached_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(username) DO UPDATE SET data = ?2, cached_at = ?3",
+        rusqlite::params![username, json, now],
+    )
+    .map_err(|e| format!("DB error saving kitsu cache: {}", e))?;
+    Ok(())
+}
+
+/// Returns the cached KitsuProfile JSON for the given username, or null if not cached.
+#[tauri::command]
+fn get_kitsu_cache(
+    state: tauri::State<DbState>,
+    username: String,
+) -> Result<Option<String>, String> {
+    let conn = state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+    // Table may not exist yet if save has never been called
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS kitsu_cache (
+            username  TEXT PRIMARY KEY,
+            data      TEXT NOT NULL,
+            cached_at TEXT NOT NULL
+        );",
+    )
+    .map_err(|e| format!("DB error: {}", e))?;
+    let result = conn.query_row(
+        "SELECT data FROM kitsu_cache WHERE username = ?1",
+        rusqlite::params![username],
+        |row| row.get::<_, String>(0),
+    );
+    match result {
+        Ok(json) => Ok(Some(json)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("DB error reading kitsu cache: {}", e)),
+    }
+}
+
+// ─── 11. App Initialization ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -661,6 +787,7 @@ pub fn run() {
             fetch_metadata,
             search_anime_multi,
             search_mal_multi,
+            search_kitsu_multi,
             // Library
             get_library,
             save_series_to_library,
@@ -681,6 +808,10 @@ pub fn run() {
             // Utilities
             open_episode,
             get_mal_client_id,
+            // Kitsu
+            fetch_kitsu_profile,
+            save_kitsu_cache,
+            get_kitsu_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

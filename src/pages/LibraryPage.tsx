@@ -35,6 +35,22 @@ import AniListPickerModal, {
   SearchResult,
 } from "../components/AniListPickerModal";
 
+// Kitsu result shape returned by the search_kitsu_multi Tauri command
+interface KitsuResult {
+  kitsu_id: number;
+  title: string;
+  title_english: string | null;
+  title_native: string | null;
+  synopsis: string | null;
+  episode_count: number | null;
+  kitsu_score: number | null;
+  cover_url: string | null;
+  genres: string[];
+  status: string | null;
+  format: string | null;
+  season_year: number | null;
+}
+
 // ─── 2. Types & Interfaces ───────────────────────────────────────────────────
 
 type GridLayout = "compact" | "comfortable" | "cozy";
@@ -542,6 +558,7 @@ export default function LibraryPage({
    * Metadata source behaviour:
    *   "anilist" — AniList only, shows result picker
    *   "mal"     — MAL only, shows result picker
+   *   "kitsu"   — Kitsu only, shows result picker (no API key required)
    *   "both"    — AniList picker first, then MAL field-merge picker
    */
   async function handleConfirmAndFetch(confirmedEntries: ScanEntry[]) {
@@ -628,6 +645,41 @@ export default function LibraryPage({
 
           const picked = await showPicker(malAsSearchResults, entry.editedName);
           meta = picked ?? malAsSearchResults[0];
+        } else if (metadataSource === "kitsu") {
+          // ── Kitsu only — no API key required ──────────────────────────────
+          const kitsuResults = await invoke<KitsuResult[]>(
+            "search_kitsu_multi",
+            { title: entry.editedName },
+          );
+
+          if (kitsuResults.length === 0) {
+            throw new Error(`No Kitsu results found for '${entry.editedName}'`);
+          }
+
+          // Negative kitsu_id sentinel — same pattern as MAL so the
+          // anilist_id > 0 guard below keeps null stored in the DB
+          const kitsuAsSearchResults: SearchResult[] = kitsuResults.map(
+            (k) => ({
+              anilist_id: -k.kitsu_id,
+              title: k.title,
+              title_english: k.title_english,
+              title_native: k.title_native,
+              synopsis: k.synopsis,
+              cover_url: k.cover_url,
+              anilist_score: k.kitsu_score,
+              episode_count: k.episode_count,
+              genres: k.genres,
+              status: k.status,
+              format: k.format,
+              season_year: k.season_year,
+            }),
+          );
+
+          const picked = await showPicker(
+            kitsuAsSearchResults,
+            entry.editedName,
+          );
+          meta = picked ?? kitsuAsSearchResults[0];
         } else {
           // ── AniList (or Both) ──────────────────────────────────────────────
           const searchResults = await invoke<SearchResult[]>(
