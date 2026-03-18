@@ -917,9 +917,23 @@ export default function LibraryPage({
                 <button
                   onClick={() => setShowSortMenu((prev) => !prev)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-md
-                    border border-[#00d4ff]/10 text-[#8899bb] text-xs
-                    hover:border-[#00d4ff]/30 hover:text-[#f0f4ff]
-                    transition-all"
+                    border text-xs transition-all"
+                  style={{
+                    borderColor: "var(--border-subtle)",
+                    color: "var(--text-secondary)",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor =
+                      "var(--border-default)";
+                    (e.currentTarget as HTMLElement).style.color =
+                      "var(--text-primary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.borderColor =
+                      "var(--border-subtle)";
+                    (e.currentTarget as HTMLElement).style.color =
+                      "var(--text-secondary)";
+                  }}
                 >
                   {SORT_LABELS[sortBy]}
                   <ChevronDown size={11} />
@@ -928,8 +942,11 @@ export default function LibraryPage({
                 {showSortMenu && (
                   <div
                     className="absolute right-0 top-full mt-1 z-50
-                    bg-[#13131f] border border-[#00d4ff]/15 rounded-md
-                    overflow-hidden shadow-xl min-w-[160px]"
+                    rounded-md overflow-hidden shadow-xl min-w-[160px]"
+                    style={{
+                      background: "var(--bg-elevated)",
+                      borderColor: "var(--border-default)",
+                    }}
                   >
                     {(Object.keys(SORT_LABELS) as SortOption[]).map((opt) => (
                       <button
@@ -939,12 +956,33 @@ export default function LibraryPage({
                           setShowSortMenu(false);
                         }}
                         className={`w-full text-left px-4 py-2 text-xs
-                          transition-colors
-                          ${
+                          transition-colors`}
+                        style={{
+                          color:
                             sortBy === opt
-                              ? "text-[#00d4ff] bg-[#00d4ff]/10"
-                              : "text-[#8899bb] hover:bg-[#1c1c30] hover:text-[#f0f4ff]"
-                          }`}
+                              ? "var(--accent)"
+                              : "var(--text-secondary)",
+                          background:
+                            sortBy === opt
+                              ? "var(--accent-dim)"
+                              : "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (sortBy !== opt) {
+                            (e.currentTarget as HTMLElement).style.background =
+                              "var(--bg-surface)";
+                            (e.currentTarget as HTMLElement).style.color =
+                              "var(--text-primary)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (sortBy !== opt) {
+                            (e.currentTarget as HTMLElement).style.background =
+                              "transparent";
+                            (e.currentTarget as HTMLElement).style.color =
+                              "var(--text-secondary)";
+                          }
+                        }}
                       >
                         {SORT_LABELS[opt]}
                       </button>
